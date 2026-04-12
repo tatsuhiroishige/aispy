@@ -63,8 +63,19 @@ node --experimental-require-module dist/index.js
 
 ## Claude Code configuration
 
-Add this to your Claude Code MCP settings (`~/.claude/claude_desktop_config.json`
-or project-level `.mcp.json`):
+### Recommended: wrapper script
+
+The simplest setup uses the included wrapper script, which handles `.env`
+loading and the `--experimental-require-module` flag automatically:
+
+```bash
+# Register with Claude Code
+claude mcp add aispy -- /path/to/aispy/scripts/aispy-mcp.sh
+```
+
+### Alternative: manual JSON config
+
+Add this to your Claude Code MCP settings (`~/.claude.json` project config):
 
 ```json
 {
@@ -84,7 +95,15 @@ or project-level `.mcp.json`):
 }
 ```
 
-Run `aispy` in a separate tmux pane to see the TUI while Claude searches.
+### Usage
+
+1. Start the TUI in a tmux pane: `node --experimental-require-module dist/index.js`
+2. Start Claude Code in another pane: `claude`
+3. Ask Claude to search or research something
+4. Watch the TUI update in real time -- search queries, results, fetched pages
+
+The startup order doesn't matter. The IPC client auto-reconnects every 3
+seconds until the TUI is available.
 
 ## Keybindings
 
