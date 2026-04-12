@@ -12,6 +12,8 @@ export interface ComputedStyle {
   listStyleType: string;
   whiteSpace: string;
   visibility: string;
+  flexDirection?: 'row' | 'column';
+  flexGrow?: number;
 }
 
 export interface StyleResolver {
@@ -216,6 +218,8 @@ const STYLE_PROP_MAP: Record<string, keyof ComputedStyle> = {
   'list-style-type': 'listStyleType',
   'white-space': 'whiteSpace',
   'visibility': 'visibility',
+  'flex-direction': 'flexDirection',
+  'flex-grow': 'flexGrow',
 };
 
 function parseNumericValue(value: string): number {
@@ -265,6 +269,16 @@ function applyDeclarations(
 
     if (mapped === 'marginTop' || mapped === 'marginBottom' || mapped === 'paddingLeft') {
       (result[mapped] as number) = parseNumericValue(value);
+    } else if (mapped === 'flexDirection') {
+      const dir = value.trim();
+      if (dir === 'row' || dir === 'column') {
+        result.flexDirection = dir;
+      }
+    } else if (mapped === 'flexGrow') {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        result.flexGrow = num;
+      }
     } else {
       (result[mapped] as string) = value;
     }

@@ -280,4 +280,59 @@ describe('renderHtmlToTerminal', () => {
     expect(out).toContain('After');
     expect(out).not.toContain('Buy now');
   });
+
+  it('renders flex row with children side by side', () => {
+    const out = render(
+      '<div style="display:flex"><div>A</div><div>B</div></div>',
+      80
+    );
+    // Both A and B should appear on the same line
+    const lines = out.split('\n').filter(l => l.trim());
+    const lineWithA = lines.find(l => l.includes('A'));
+    expect(lineWithA).toBeDefined();
+    expect(lineWithA).toContain('B');
+  });
+
+  it('renders flex column with children stacked vertically', () => {
+    const out = render(
+      '<div style="display:flex;flex-direction:column"><div>A</div><div>B</div></div>',
+      80
+    );
+    const lines = out.split('\n').filter(l => l.trim());
+    const aLine = lines.findIndex(l => l.includes('A'));
+    const bLine = lines.findIndex(l => l.includes('B'));
+    expect(aLine).toBeGreaterThanOrEqual(0);
+    expect(bLine).toBeGreaterThan(aLine);
+  });
+
+  it('renders flex-grow to distribute extra width', () => {
+    const out = render(
+      '<div style="display:flex">' +
+      '<div style="flex-grow:1">Wide</div>' +
+      '<div>Fixed</div>' +
+      '</div>',
+      60
+    );
+    // Both should appear on the same line
+    const lines = out.split('\n').filter(l => l.trim());
+    const lineWithBoth = lines.find(l => l.includes('Wide') && l.includes('Fixed'));
+    expect(lineWithBoth).toBeDefined();
+    // "Wide" should have more space before "Fixed" since it has flex-grow:1
+    const wideIdx = lineWithBoth!.indexOf('Wide');
+    const fixedIdx = lineWithBoth!.indexOf('Fixed');
+    expect(fixedIdx).toBeGreaterThan(wideIdx + 'Wide'.length);
+  });
+
+  it('renders flex via CSS class', () => {
+    const out = render(
+      '<style>.row{display:flex}</style>' +
+      '<div class="row"><div>X</div><div>Y</div></div>',
+      80
+    );
+    // X and Y should appear on the same line
+    const lines = out.split('\n').filter(l => l.trim());
+    const lineWithX = lines.find(l => l.includes('X'));
+    expect(lineWithX).toBeDefined();
+    expect(lineWithX).toContain('Y');
+  });
 });

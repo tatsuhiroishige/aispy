@@ -1,5 +1,7 @@
 import { createStyleResolver } from './cssResolver.js';
-import type { StyleResolver } from './cssResolver.js';
+import type { StyleResolver, ComputedStyle } from './cssResolver.js';
+import { calculateFlexLayout } from './flexLayout.js';
+import type { FlexItem } from './flexLayout.js';
 
 const SKIP_ELEMENTS = new Set([
   'SCRIPT', 'STYLE', 'NAV', 'FOOTER', 'HEADER',
@@ -130,6 +132,12 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
 
   // CSS-based hiding: skip elements with display:none or visibility:hidden
   if (isCssHidden(el, ctx)) return [];
+
+  // Flex container: use yoga layout
+  const flexStyle = isFlexContainer(el, ctx);
+  if (flexStyle) {
+    return renderFlexContainer(el, ctx, flexStyle);
+  }
 
   switch (tag) {
     case 'H1':
@@ -471,6 +479,128 @@ function distributeColumnWidths(naturalWidths: number[], available: number): num
 
   // Even minimums exceed available — give each MIN_COL_WIDTH
   return Array.from({ length: colCount }, () => MIN_COL_WIDTH);
+}
+
+function mergeColumns(columns: { text: string; width: number }[]): string {
+  if (columns.length === 0) return '';
+  if (columns.length === 1) return columns[0]!.text;
+
+  const splitCols = columns.map(col => ({
+    lines: col.text.split('\n'),
+    width: col.width,
+  }));
+
+  const maxLines = Math.max(...splitCols.map(c => c.lines.length));
+  const merged: string[] = [];
+
+  for (let row = 0; row < maxLines; row++) {
+    let line = '';
+    for (let colIdx = 0; colIdx < splitCols.length; colIdx++) {
+      const col = splitCols[colIdx]!;
+      const content = row < col.lines.length ? col.lines[row]! : '';
+      // Pad to column width; last column doesn't need trailing spaces
+      if (colIdx < splitCols.length - 1) {
+        line += content.padEnd(col.width);
+      } else {
+        line += content;
+      }
+    }
+    merged.push(line);
+  }
+
+  return merged.join('\n');
+}
+
+function isFlexContainer(el: Element, ctx: RenderContext): ComputedStyle | null {
+  if (!ctx.styles) return null;
+  const style = ctx.styles.getComputedStyle(el);
+  if (style.display === 'flex') return style;
+  return null;
+}
+
+function renderFlexContainer(element: Element, ctx: RenderContext, style: ComputedStyle): string[] {
+  const direction = style.flexDirection ?? 'row';
+
+  // Collect child elements (skip text-only nodes for flex layout)
+  const childElements: Element[] = [];
+  for (const child of element.children) {
+    if (SKIP_ELEMENTS.has(child.tagName)) continue;
+    if (isCssHidden(child, ctx)) continue;
+    childElements.push(child);
+  }
+
+  if (childElements.length === 0) return [];
+
+  if (direction === 'column') {
+    // Column layout: render children vertically (same as normal block flow)
+    const blocks: string[] = [];
+    for (const child of childElements) {
+      blocks.push(...renderNode(child, ctx));
+    }
+    return blocks;
+  }
+
+  // Row layout: use yoga to calculate widths, then merge side-by-side
+
+  // First pass: render each child to measure content dimensions
+  const childRendered: string[] = [];
+  for (const child of childElements) {
+    const childBlocks = renderNode(child, { ...ctx, width: ctx.width });
+    childRendered.push(childBlocks.filter(b => b.length > 0).join('\n'));
+  }
+
+  // Measure content dimensions
+  const childMeasurements = childRendered.map(text => {
+    const lines = text.split('\n');
+    const maxLineWidth = Math.max(...lines.map(l => l.length), 0);
+    return { width: maxLineWidth, height: lines.length };
+  });
+
+  // Build FlexItem tree for yoga
+  const flexChildren: FlexItem[] = childElements.map((child, i) => {
+    const childStyle = ctx.styles?.getComputedStyle(child);
+    const measurement = childMeasurements[i]!;
+    return {
+      width: measurement.width > 0 ? measurement.width : undefined,
+      height: measurement.height > 0 ? measurement.height : undefined,
+      flexGrow: childStyle?.flexGrow ?? 0,
+      flexShrink: 1,
+    };
+  });
+
+  const rootItem: FlexItem = {
+    flexDirection: 'row',
+    children: flexChildren,
+  };
+
+  const totalContentHeight = Math.max(...childMeasurements.map(m => m.height), 1);
+  const layout = calculateFlexLayout(rootItem, ctx.width, totalContentHeight);
+
+  // Re-render children at their calculated widths
+  const columns: { text: string; width: number }[] = [];
+  for (let i = 0; i < childElements.length; i++) {
+    const childLayout = layout.children[i]!;
+    const allocatedWidth = Math.max(Math.floor(childLayout.width), 1);
+
+    const childBlocks = renderNode(childElements[i]!, {
+      ...ctx,
+      width: allocatedWidth,
+      indent: 0,
+    });
+    const text = childBlocks.filter(b => b.length > 0).join('\n');
+    columns.push({ text, width: allocatedWidth });
+  }
+
+  const merged = mergeColumns(columns);
+  if (!merged) return [];
+
+  // Apply indent
+  if (ctx.indent > 0) {
+    const prefix = ' '.repeat(ctx.indent);
+    return [merged.split('\n').map(line => prefix + line).join('\n')];
+  }
+
+  return [merged];
 }
 
 function renderChildren(el: Element, ctx: RenderContext): string[] {
