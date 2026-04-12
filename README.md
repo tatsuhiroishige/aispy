@@ -54,7 +54,7 @@ aispy
 If running from source:
 
 ```bash
-git clone https://github.com/tatsu/aispy.git
+git clone https://github.com/tatsuhiroishige/aispy.git
 cd aispy
 npm install
 npm run build
