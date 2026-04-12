@@ -1,6 +1,6 @@
 {
   "name": "aispy",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AI Search Process Visualizer — MCP server + TUI that lets humans watch what AI is searching/reading on the web",
   "keywords": ["mcp", "ai", "search", "tui", "ink", "claude", "brave", "web-search", "terminal"],
   "license": "MIT",

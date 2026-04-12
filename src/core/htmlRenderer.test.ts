@@ -82,7 +82,7 @@ describe('renderHtmlToTerminal', () => {
     expect(out).toContain('Example (https://example.com)');
   });
 
-  it('renders basic tables with separators', () => {
+  it('renders basic tables with box-drawing borders', () => {
     const out = render(`
       <table>
         <thead><tr><th>Name</th><th>Age</th></tr></thead>
@@ -92,11 +92,93 @@ describe('renderHtmlToTerminal', () => {
         </tbody>
       </table>
     `);
-    expect(out).toContain('\u2502'); // cell separator
-    expect(out).toContain('\u2500'); // header underline
-    expect(out).toContain('\u253C'); // cross
-    expect(out).toContain('Alice');
-    expect(out).toContain('Bob');
+    const lines = out.split('\n');
+    // Top border: ┌──┬──┐
+    expect(lines[0]).toMatch(/\u250C\u2500+\u252C\u2500+\u2510/);
+    // Header row with │
+    expect(lines[1]).toMatch(/\u2502.*Name.*\u2502.*Age.*\u2502/);
+    // Header separator: ├──┼──┤
+    expect(lines[2]).toMatch(/\u251C\u2500+\u253C\u2500+\u2524/);
+    // Data rows
+    expect(lines[3]).toMatch(/\u2502.*Alice.*\u2502/);
+    expect(lines[4]).toMatch(/\u2502.*Bob.*\u2502/);
+    // Bottom border: └──┴──┘
+    expect(lines[5]).toMatch(/\u2514\u2500+\u2534\u2500+\u2518/);
+  });
+
+  it('renders table with <thead>/<th> with header separator', () => {
+    const out = render(`
+      <table>
+        <thead><tr><th>Col A</th><th>Col B</th></tr></thead>
+        <tbody><tr><td>x</td><td>y</td></tr></tbody>
+      </table>
+    `);
+    // Should have ├ and ┤ for header separator
+    expect(out).toContain('\u251C');
+    expect(out).toContain('\u2524');
+    expect(out).toContain('\u253C');
+  });
+
+  it('treats first row as header when no explicit thead/th', () => {
+    const out = render(`
+      <table>
+        <tr><td>Header1</td><td>Header2</td></tr>
+        <tr><td>val1</td><td>val2</td></tr>
+      </table>
+    `);
+    const lines = out.split('\n');
+    // Should still have header separator after first row
+    expect(lines[2]).toMatch(/\u251C\u2500+\u253C\u2500+\u2524/);
+  });
+
+  it('adjusts column widths to content', () => {
+    const out = render(`
+      <table>
+        <tr><th>N</th><th>LongerColumn</th></tr>
+        <tr><td>a</td><td>b</td></tr>
+      </table>
+    `);
+    const lines = out.split('\n');
+    // The top border segments should have different lengths
+    const topBorder = lines[0]!;
+    const segments = topBorder.split(/[\u250C\u252C\u2510]/).filter(Boolean);
+    // "LongerColumn" column should be wider than "N" column
+    // Both get minimum 5 or their content width
+    expect(segments.length).toBe(2);
+    expect(segments[1]!.length).toBeGreaterThanOrEqual(segments[0]!.length);
+  });
+
+  it('truncates long cell content at column width', () => {
+    const longText = 'a'.repeat(100);
+    const out = render(`
+      <table>
+        <tr><th>Short</th><th>Data</th></tr>
+        <tr><td>${longText}</td><td>ok</td></tr>
+      </table>
+    `, 40);
+    // The long text should be truncated with ellipsis
+    expect(out).toContain('\u2026');
+    // Each line should not exceed width
+    for (const line of out.split('\n')) {
+      expect(line.length).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it('table with many columns fits within terminal width', () => {
+    const out = render(`
+      <table>
+        <tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr>
+        <tr><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td></tr>
+      </table>
+    `, 60);
+    for (const line of out.split('\n')) {
+      expect(line.length).toBeLessThanOrEqual(60);
+    }
+    // Should still have all 5 columns (6 │ chars per data row)
+    const dataLine = out.split('\n').find(l => l.includes('1') && l.includes('5'));
+    expect(dataLine).toBeDefined();
+    const pipeCount = (dataLine!.match(/\u2502/g) ?? []).length;
+    expect(pipeCount).toBe(6); // left + 4 inner + right
   });
 
   it('renders mixed content in correct order', () => {

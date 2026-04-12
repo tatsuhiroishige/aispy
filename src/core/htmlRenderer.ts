@@ -277,13 +277,21 @@ function renderListItem(li: Element, ctx: RenderContext): string[] {
   return blocks;
 }
 
+const MIN_COL_WIDTH = 5;
+
+function isNumeric(text: string): boolean {
+  return /^\s*-?[\d,]+\.?\d*%?\s*$/.test(text) || /^\s*[\d.]+[KMGTBkb]+\s*$/.test(text);
+}
+
 function renderTable(table: Element, ctx: RenderContext): string[] {
   const rows: string[][] = [];
   const headerRowIndices: number[] = [];
+  let hasExplicitHeader = false;
 
   function collectRows(parent: Element): void {
     for (const child of parent.children) {
       if (child.tagName === 'THEAD' || child.tagName === 'TBODY' || child.tagName === 'TFOOT') {
+        if (child.tagName === 'THEAD') hasExplicitHeader = true;
         const inHead = child.tagName === 'THEAD';
         for (const tr of child.children) {
           if (tr.tagName === 'TR') {
@@ -293,9 +301,11 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
         }
       } else if (child.tagName === 'TR') {
         const cells = collectCells(child);
-        // Detect header row by checking if all cells are TH
         const allTh = Array.from(child.children).every(c => c.tagName === 'TH');
-        if (allTh && rows.length === 0) headerRowIndices.push(rows.length);
+        if (allTh) {
+          hasExplicitHeader = true;
+          headerRowIndices.push(rows.length);
+        }
         rows.push(cells);
       }
     }
@@ -314,33 +324,134 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
   collectRows(table);
   if (rows.length === 0) return [];
 
-  // Calculate column widths
+  // If no explicit header, treat first row as header
+  if (!hasExplicitHeader && rows.length > 1) {
+    headerRowIndices.push(0);
+  }
+
   const colCount = Math.max(...rows.map(r => r.length));
-  const colWidths: number[] = Array.from({ length: colCount }, () => 0);
+
+  // Calculate natural column widths (max content per column)
+  const naturalWidths: number[] = Array.from({ length: colCount }, () => 0);
   for (const row of rows) {
     for (let i = 0; i < row.length; i++) {
-      colWidths[i] = Math.max(colWidths[i]!, row[i]!.length);
+      naturalWidths[i] = Math.max(naturalWidths[i]!, row[i]!.length);
     }
+  }
+
+  // Each column has 1-space padding on each side, plus border chars
+  // Total width = indent + 1 (left border) + sum(colWidth + 2 padding) + (colCount-1) * 1 (inner borders) + 1 (right border)
+  // = indent + 2 + colCount * (colWidth_i + 2) + (colCount - 1)
+  // = indent + 2 + sum(colWidth_i + 2) + colCount - 1
+  const overhead = ctx.indent + 1 + colCount * 2 + (colCount - 1) + 1;
+  // = indent + colCount * 3
+  const availableForContent = ctx.width - overhead;
+
+  const colWidths = distributeColumnWidths(naturalWidths, availableForContent);
+
+  // Detect numeric columns from data rows (exclude header rows)
+  const numericCols: boolean[] = Array.from({ length: colCount }, () => false);
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    if (headerRowIndices.includes(rowIdx)) continue;
+    const row = rows[rowIdx]!;
+    for (let i = 0; i < row.length; i++) {
+      if (row[i] && isNumeric(row[i]!)) {
+        numericCols[i] = true;
+      }
+    }
+  }
+  // Only mark as numeric if ALL data cells in the column are numeric
+  for (let i = 0; i < colCount; i++) {
+    let allNumeric = true;
+    let hasData = false;
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      if (headerRowIndices.includes(rowIdx)) continue;
+      const cell = rows[rowIdx]![i] ?? '';
+      if (cell === '') continue;
+      hasData = true;
+      if (!isNumeric(cell)) {
+        allNumeric = false;
+        break;
+      }
+    }
+    numericCols[i] = hasData && allNumeric;
   }
 
   const prefix = ' '.repeat(ctx.indent);
+
+  function makeHLine(left: string, mid: string, right: string): string {
+    const segments = colWidths.map(w => '\u2500'.repeat(w + 2));
+    return prefix + left + segments.join(mid) + right;
+  }
+
+  function formatRow(row: string[], rowIdx: number): string {
+    const cells = Array.from({ length: colCount }, (_, i) => {
+      const text = row[i] ?? '';
+      const w = colWidths[i]!;
+      let content = text;
+      if (content.length > w) {
+        content = content.slice(0, w - 1) + '\u2026';
+      }
+      // Right-align numeric data cells, left-align headers
+      if (numericCols[i] && !headerRowIndices.includes(rowIdx)) {
+        return ' ' + content.padStart(w) + ' ';
+      }
+      return ' ' + content.padEnd(w) + ' ';
+    });
+    return prefix + '\u2502' + cells.join('\u2502') + '\u2502';
+  }
+
   const lines: string[] = [];
 
+  // Top border
+  lines.push(makeHLine('\u250C', '\u252C', '\u2510'));
+
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx]!;
-    const cells = Array.from({ length: colCount }, (_, i) => {
-      const cell = row[i] ?? '';
-      return cell.padEnd(colWidths[i]!);
-    });
-    lines.push(prefix + cells.join(' \u2502 '));
+    lines.push(formatRow(rows[rowIdx]!, rowIdx));
 
     if (headerRowIndices.includes(rowIdx)) {
-      const separator = colWidths.map(w => '\u2500'.repeat(w)).join('\u2500\u253C\u2500');
-      lines.push(prefix + separator);
+      // Header separator
+      lines.push(makeHLine('\u251C', '\u253C', '\u2524'));
     }
   }
 
+  // Bottom border
+  lines.push(makeHLine('\u2514', '\u2534', '\u2518'));
+
   return [lines.join('\n')];
+}
+
+function distributeColumnWidths(naturalWidths: number[], available: number): number[] {
+  const colCount = naturalWidths.length;
+  const totalNatural = naturalWidths.reduce((a, b) => a + b, 0);
+
+  if (totalNatural <= available) {
+    return naturalWidths.map(w => Math.max(w, MIN_COL_WIDTH));
+  }
+
+  // Shrink: give MIN_COL_WIDTH to small columns, distribute rest proportionally
+  const result = naturalWidths.map(w => Math.max(w, MIN_COL_WIDTH));
+  const minTotal = result.reduce((a, b) => a + b, 0);
+
+  if (minTotal <= available) {
+    // We have budget to shrink large columns to fit
+    // Find columns that need shrinking (those above MIN_COL_WIDTH that are larger than their fair share)
+    let excess = minTotal - available;
+    // Shrink from largest to smallest, taking proportional cuts
+    const indexed = result.map((w, i) => ({ w, i })).sort((a, b) => b.w - a.w);
+    for (const entry of indexed) {
+      if (excess <= 0) break;
+      if (entry.w <= MIN_COL_WIDTH) continue;
+      const shrinkable = entry.w - MIN_COL_WIDTH;
+      const cut = Math.min(shrinkable, excess);
+      result[entry.i] = entry.w - cut;
+      excess -= cut;
+    }
+    return result;
+  }
+
+  // Even minimums exceed available — give each MIN_COL_WIDTH
+  return Array.from({ length: colCount }, () => MIN_COL_WIDTH);
 }
 
 function renderChildren(el: Element, ctx: RenderContext): string[] {
