@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 vi.mock('axios');
 import axios from 'axios';
+import { createFetchCache } from '../../core/fetchCache.js';
 import type { IpcClient } from '../../ipc/client.js';
 import type { FetchEvent, FetchStartEvent } from '../../types.js';
 import { handleFetch } from './fetch.js';
@@ -108,5 +109,38 @@ describe('handleFetch', () => {
     expect(secondEvent.durationMs).toBeGreaterThanOrEqual(0);
     expect(secondEvent.tokens).toBeGreaterThan(0);
     expect(secondEvent.content).toBeTruthy();
+  });
+
+  it('returns cached content without making an HTTP request', async () => {
+    const cache = createFetchCache();
+    cache.set('https://example.com/cached', 'cached content', 42);
+
+    const result = await handleFetch(
+      { url: 'https://example.com/cached' },
+      undefined,
+      cache,
+    );
+
+    expect(mockedGet).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    const first = result.content?.[0];
+    expect(first?.type).toBe('text');
+    const text = first?.type === 'text' ? first.text : '';
+    expect(text).toBe('cached content');
+  });
+
+  it('fetches normally when cache is empty', async () => {
+    mockedGet.mockResolvedValueOnce({ data: '<p>fresh</p>' });
+
+    const cache = createFetchCache();
+    const result = await handleFetch(
+      { url: 'https://example.com/miss' },
+      undefined,
+      cache,
+    );
+
+    expect(mockedGet).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBeFalsy();
+    expect(cache.has('https://example.com/miss')).toBe(true);
   });
 });

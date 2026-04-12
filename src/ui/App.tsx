@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Box, useApp, useStdout } from 'ink';
+import { Box, useApp, useStdout, useInput } from 'ink';
 import type { EventStore } from '../core/store.js';
 import { openInBrowser } from '../core/browserOpen.js';
 import { StoreProvider } from './contexts/StoreContext.js';
@@ -8,6 +8,8 @@ import { useKeyboard } from './hooks/useKeyboard.js';
 import { ActivityLog } from './components/ActivityLog.js';
 import { PageViewer } from './components/PageViewer.js';
 import { StatusBar } from './components/StatusBar.js';
+import { FilterInput } from './components/FilterInput.js';
+import { StatsModal } from './components/StatsModal.js';
 import type { FocusPane, ViewerState } from './types.js';
 
 interface AppProps {
@@ -25,6 +27,9 @@ function AppInner({ connected = true }: { connected: boolean }) {
   const [focusPane, setFocusPane] = useState<FocusPane>('log');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewerState, setViewerState] = useState<ViewerState | null>(null);
+  const [filterText, setFilterText] = useState('');
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   const contentHeight = Math.max(5, rows - 4);
 
@@ -88,25 +93,74 @@ function AppInner({ connected = true }: { connected: boolean }) {
     }
   }, [viewerState, exit]);
 
-  useKeyboard({
-    onTab: handleTab,
-    onUp: handleUp,
-    onDown: handleDown,
-    onEnter: handleEnter,
-    onOpen: handleOpen,
-    onQuit: handleQuit,
-  });
+  const handleFilter = useCallback(() => {
+    setIsFiltering(true);
+  }, []);
+
+  const handleStats = useCallback(() => {
+    setShowStats((s) => !s);
+  }, []);
+
+  const handleEscape = useCallback(() => {
+    setIsFiltering(false);
+    setFilterText('');
+    setShowStats(false);
+  }, []);
+
+  const filteredEvents = filterText
+    ? events.filter((e) => {
+        if (e.type === 'search') return e.query.toLowerCase().includes(filterText.toLowerCase());
+        if (e.type === 'fetch' || e.type === 'fetch-start') return e.url.toLowerCase().includes(filterText.toLowerCase());
+        return false;
+      })
+    : events;
+
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        handleEscape();
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setFilterText((prev) => prev.slice(0, -1));
+        return;
+      }
+      if (key.return || key.tab || key.upArrow || key.downArrow) {
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setFilterText((prev) => prev + input);
+      }
+    },
+    { isActive: isFiltering },
+  );
+
+  useKeyboard(
+    {
+      onTab: handleTab,
+      onUp: handleUp,
+      onDown: handleDown,
+      onEnter: handleEnter,
+      onOpen: handleOpen,
+      onQuit: handleQuit,
+      onFilter: handleFilter,
+      onStats: handleStats,
+      onEscape: handleEscape,
+    },
+    { isActive: !isFiltering },
+  );
 
   return (
     <Box flexDirection="column" width="100%" height={rows}>
       <Box flexGrow={1}>
-        <Box width="40%">
+        <Box width="40%" flexDirection="column">
           <ActivityLog
-            events={events}
+            events={filteredEvents}
             focused={focusPane === 'log'}
             selectedIndex={selectedIndex}
-            height={contentHeight}
+            height={isFiltering ? contentHeight - 1 : contentHeight}
           />
+          {isFiltering && <FilterInput value={filterText} onChange={setFilterText} />}
         </Box>
         <Box flexGrow={1}>
           <PageViewer
@@ -117,6 +171,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
         </Box>
       </Box>
       <StatusBar stats={stats} connected={connected} focusPane={focusPane} hasViewerContent={viewerState !== null} />
+      {showStats && <StatsModal events={events} stats={stats} />}
     </Box>
   );
 }

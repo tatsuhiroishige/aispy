@@ -7,10 +7,17 @@ export interface KeyHandlers {
   onEnter(): void;
   onOpen(): void;
   onQuit(): void;
+  onFilter(): void;
+  onStats(): void;
+  onEscape(): void;
+}
+
+export interface KeyboardOptions {
+  isActive?: boolean;
 }
 
 /** Wraps Ink useInput and dispatches to named key handlers. */
-export function useKeyboard(handlers: KeyHandlers): void {
+export function useKeyboard(handlers: KeyHandlers, options?: KeyboardOptions): void {
   useInput((input, key) => {
     if (key.tab) {
       handlers.onTab();
@@ -36,5 +43,17 @@ export function useKeyboard(handlers: KeyHandlers): void {
       handlers.onQuit();
       return;
     }
-  });
+    if (input === '/') {
+      handlers.onFilter();
+      return;
+    }
+    if (input === 's') {
+      handlers.onStats();
+      return;
+    }
+    if (key.escape) {
+      handlers.onEscape();
+      return;
+    }
+  }, { isActive: options?.isActive });
 }

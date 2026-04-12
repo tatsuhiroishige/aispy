@@ -1,6 +1,7 @@
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import { z } from 'zod';
+import type { FetchCache } from '../../core/fetchCache.js';
 import { htmlToText } from '../../core/htmlToText.js';
 import type { IpcClient } from '../../ipc/client.js';
 
@@ -34,8 +35,23 @@ const CHARS_PER_TOKEN = 4;
 export async function handleFetch(
   args: FetchInput,
   client?: IpcClient,
+  cache?: FetchCache,
 ): Promise<CallToolResult> {
   try {
+    const cached = cache?.get(args.url);
+    if (cached) {
+      client?.send({
+        type: 'fetch',
+        timestamp: Date.now(),
+        url: args.url,
+        content: cached.content,
+        tokens: cached.tokens,
+        durationMs: 0,
+      });
+      process.stderr.write(`[fetch] cache hit: ${args.url}\n`);
+      return { content: [{ type: 'text', text: cached.content }] };
+    }
+
     const startTime = Date.now();
 
     client?.send({
@@ -49,7 +65,7 @@ export async function handleFetch(
       timeout: REQUEST_TIMEOUT_MS,
     });
 
-    const content = htmlToText(response.data);
+    const content = htmlToText(response.data, args.url);
     const tokens = Math.ceil(content.length / CHARS_PER_TOKEN);
     const preview = content.slice(0, PREVIEW_CHARS);
 
@@ -66,6 +82,8 @@ export async function handleFetch(
       tokens,
       durationMs: Date.now() - startTime,
     });
+
+    cache?.set(args.url, content, tokens);
 
     return {
       content: [

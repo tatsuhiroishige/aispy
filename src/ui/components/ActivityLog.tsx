@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { AispyEvent } from '../../types.js';
 import { SearchEntry } from './SearchEntry.js';
@@ -11,6 +12,14 @@ interface ActivityLogProps {
 }
 
 export function ActivityLog({ events, selectedIndex, focused, height }: ActivityLogProps) {
+  const fetchedUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const event of events) {
+      if (event.type === 'fetch') urls.add(event.url);
+    }
+    return urls;
+  }, [events]);
+
   if (events.length === 0) {
     return (
       <Box
@@ -43,7 +52,7 @@ export function ActivityLog({ events, selectedIndex, focused, height }: Activity
         const isSelected = actualIndex === selectedIndex;
 
         if (event.type === 'search') {
-          return <SearchEntry key={actualIndex} event={event} selected={isSelected} />;
+          return <SearchEntry key={actualIndex} event={event} selected={isSelected} fetchedUrls={fetchedUrls} />;
         }
         return <FetchEntry key={actualIndex} event={event} selected={isSelected} />;
       })}

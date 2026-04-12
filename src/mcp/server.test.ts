@@ -98,7 +98,11 @@ describe('createServer', () => {
       arguments: { url: 'https://example.com' },
     });
     expect(handleFetch).toHaveBeenCalledTimes(1);
-    expect(handleFetch).toHaveBeenCalledWith({ url: 'https://example.com' }, undefined);
+    expect(handleFetch).toHaveBeenCalledWith(
+      { url: 'https://example.com' },
+      undefined,
+      expect.anything(),
+    );
     expect(result.content).toEqual([{ type: 'text', text: 'fetch-result' }]);
   });
 

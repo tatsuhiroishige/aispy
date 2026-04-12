@@ -17,6 +17,9 @@ function makeHandlers(): KeyHandlers {
     onEnter: vi.fn(),
     onOpen: vi.fn(),
     onQuit: vi.fn(),
+    onFilter: vi.fn(),
+    onStats: vi.fn(),
+    onEscape: vi.fn(),
   };
 }
 
@@ -61,5 +64,28 @@ describe('useKeyboard', () => {
     const { stdin } = render(<TestKeyComponent handlers={handlers} />);
     stdin.write('\t');
     expect(handlers.onTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches / to onFilter', () => {
+    const handlers = makeHandlers();
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('/');
+    expect(handlers.onFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches s to onStats', () => {
+    const handlers = makeHandlers();
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('s');
+    expect(handlers.onStats).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches Escape to onEscape', async () => {
+    const handlers = makeHandlers();
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('\u001B');
+    // Ink buffers standalone escape and flushes via setImmediate
+    await new Promise((resolve) => { setImmediate(resolve); });
+    expect(handlers.onEscape).toHaveBeenCalledTimes(1);
   });
 });
