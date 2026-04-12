@@ -7,4 +7,4 @@
   sleep 0.3
   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch","arguments":{"url":"https://example.com"}}}'
   sleep 3
-} | node dist/index.js --mcp
+} | node --experimental-require-module dist/index.js --mcp

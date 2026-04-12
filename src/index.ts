@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-require-module
 import { startMcpServer } from './mcp-server.js';
 import { startTui } from './tui.js';
 import { createIpcClient } from './ipc/client.js';

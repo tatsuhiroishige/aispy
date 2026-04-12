@@ -9,4 +9,4 @@
   sleep 2
   echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"fetch","arguments":{"url":"https://www.iana.org/help/example-domains"}}}'
   sleep 3
-} | node dist/index.js --mcp
+} | node --experimental-require-module dist/index.js --mcp
