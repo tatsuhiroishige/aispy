@@ -174,4 +174,53 @@ describe('IPC server', () => {
 
     await expect(fs.access(socketPathOverride)).rejects.toThrow();
   });
+
+  it('receives events from multiple simultaneous clients', async () => {
+    socketPathOverride = uniqueSocketPath();
+    const received: AispyEvent[] = [];
+    const ipc = await createIpcServer((event) => received.push(event));
+    cleanup = ipc.close;
+
+    const client1 = await connectClient(socketPathOverride);
+    const client2 = await connectClient(socketPathOverride);
+
+    await writeAndDrain(client1, serializeEvent(searchEvent));
+    await writeAndDrain(client2, serializeEvent(fetchStartEvent));
+
+    await waitForEvents(received, 2);
+    expect(received).toHaveLength(2);
+
+    const types = received.map((e) => e.type).sort();
+    expect(types).toEqual(['fetch-start', 'search']);
+
+    client1.destroy();
+    client2.destroy();
+  });
+
+  it('one client disconnecting does not affect the other', async () => {
+    socketPathOverride = uniqueSocketPath();
+    const received: AispyEvent[] = [];
+    const ipc = await createIpcServer((event) => received.push(event));
+    cleanup = ipc.close;
+
+    const client1 = await connectClient(socketPathOverride);
+    const client2 = await connectClient(socketPathOverride);
+
+    await writeAndDrain(client1, serializeEvent(searchEvent));
+    await waitForEvents(received, 1);
+
+    // Disconnect client1
+    client1.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // client2 should still work
+    await writeAndDrain(client2, serializeEvent(fetchStartEvent));
+    await waitForEvents(received, 2);
+
+    expect(received).toHaveLength(2);
+    expect(received[0]).toEqual(searchEvent);
+    expect(received[1]).toEqual(fetchStartEvent);
+
+    client2.destroy();
+  });
 });

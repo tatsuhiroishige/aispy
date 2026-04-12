@@ -65,7 +65,7 @@ export async function handleFetch(
       timeout: REQUEST_TIMEOUT_MS,
     });
 
-    let content = await htmlToText(response.data, args.url);
+    let content = await htmlToText(response.data, args.url, { renderer: 'terminal', width: 100 });
 
     const MAX_CONTENT_CHARS = 50_000;
     if (content.length > MAX_CONTENT_CHARS) {
