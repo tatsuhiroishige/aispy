@@ -3,7 +3,7 @@ import { act } from 'react';
 import { render } from 'ink-testing-library';
 import { createEventStore } from '../core/store.js';
 import { App } from './App.js';
-import type { SearchEvent, FetchEvent } from '../types.js';
+import type { SearchEvent, FetchEvent, FetchStartEvent } from '../types.js';
 
 function makeSearchEvent(overrides?: Partial<SearchEvent>): SearchEvent {
   return {
@@ -28,6 +28,15 @@ function makeFetchEvent(overrides?: Partial<FetchEvent>): FetchEvent {
   };
 }
 
+function makeFetchStartEvent(overrides?: Partial<FetchStartEvent>): FetchStartEvent {
+  return {
+    type: 'fetch-start',
+    timestamp: Date.now(),
+    url: 'https://example.com/loading',
+    ...overrides,
+  };
+}
+
 describe('App', () => {
   it('renders without crashing with an empty store', () => {
     const store = createEventStore();
@@ -36,7 +45,7 @@ describe('App', () => {
 
     expect(frame).toContain('Waiting for events');
     expect(frame).toContain('No page selected');
-    expect(frame).toContain('connected');
+    expect(frame).toContain('●');
   });
 
   it('after addEvent(SearchEvent), ActivityLog shows the query', () => {
@@ -65,5 +74,21 @@ describe('App', () => {
     expect(frame).toContain('1 searches');
     expect(frame).toContain('1 pages');
     expect(frame).toContain('8,241 tokens');
+  });
+
+  it('Enter on FetchStartEvent does not open PageViewer', () => {
+    const store = createEventStore();
+    const { lastFrame, stdin } = render(<App store={store} />);
+
+    act(() => {
+      store.addEvent(makeFetchStartEvent({ url: 'https://example.com/loading' }));
+    });
+
+    act(() => {
+      stdin.write('\r');
+    });
+
+    const frame = lastFrame()!;
+    expect(frame).toContain('No page selected');
   });
 });

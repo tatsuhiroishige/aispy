@@ -37,5 +37,5 @@ Rule ファイルは自動 load しない。作業に入る前に該当する fi
 
 ## Status
 
-Phase 0 以前（scaffold 前）。`src/` 未作成、`package.json` 未定義。
-次の step: Phase 0 scaffold（MCP server skeleton + Brave API search/fetch + stderr logging）。
+Phase 1 完了。MCP server + IPC + Ink TUI が動作。
+次の step: Phase 2（コンテンツ品質向上: @mozilla/readability、ANSI カラー、キャッシュ）。

@@ -59,6 +59,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
     if (events.length === 0) return;
     const event = events[selectedIndex];
     if (!event) return;
+    if (event.type === 'fetch-start') return;
 
     if (event.type === 'fetch') {
       setViewerState({ url: event.url, content: event.content, scrollOffset: 0 });
@@ -115,7 +116,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
           />
         </Box>
       </Box>
-      <StatusBar stats={stats} connected={connected} />
+      <StatusBar stats={stats} connected={connected} focusPane={focusPane} hasViewerContent={viewerState !== null} />
     </Box>
   );
 }

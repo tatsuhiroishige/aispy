@@ -1,17 +1,10 @@
 import { Box, Text } from 'ink';
 import type { SearchEvent } from '../../types.js';
+import { formatTime } from '../formatTime.js';
 
 interface SearchEntryProps {
   event: SearchEvent;
   selected: boolean;
-}
-
-function formatTime(timestamp: number): string {
-  const d = new Date(timestamp);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
 }
 
 export function SearchEntry({ event, selected }: SearchEntryProps) {
