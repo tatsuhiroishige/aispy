@@ -35,6 +35,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const exportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchCountRef = useRef(0);
+  const lastSearchCountRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -42,9 +43,18 @@ function AppInner({ connected = true }: { connected: boolean }) {
     };
   }, []);
 
-  // Auto-open PageViewer when a new FetchEvent arrives
+  // Auto-open PageViewer on new Fetch, auto-close on new Search
   useEffect(() => {
+    const searchCount = events.filter((e) => e.type === 'search').length;
     const fetchEvents = events.filter((e) => e.type === 'fetch');
+
+    // New search arrived → close viewer to show search results
+    if (searchCount > lastSearchCountRef.current) {
+      setViewerState(null);
+      lastSearchCountRef.current = searchCount;
+    }
+
+    // New fetch arrived → open/update viewer with latest page
     if (fetchEvents.length > lastFetchCountRef.current) {
       const latest = fetchEvents[fetchEvents.length - 1];
       if (latest && latest.type === 'fetch') {
