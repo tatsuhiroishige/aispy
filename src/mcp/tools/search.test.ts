@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 vi.mock('axios');
 import axios from 'axios';
+import type { IpcClient } from '../../ipc/client.js';
 import { handleSearch } from './search.js';
 
 const mockedGet = vi.mocked(axios.get);
@@ -131,5 +132,34 @@ describe('handleSearch', () => {
     expect(joined).toContain('visible-query');
 
     writeSpy.mockRestore();
+  });
+
+  it('sends a SearchEvent via IpcClient when provided', async () => {
+    vi.stubEnv('BRAVE_API_KEY', 'test-key');
+    mockedGet.mockResolvedValueOnce({
+      data: {
+        web: {
+          results: [
+            { title: 'R1', url: 'https://example.com/1', description: 'S1' },
+          ],
+        },
+      },
+    });
+
+    const mockClient: IpcClient = { send: vi.fn(), close: vi.fn() };
+
+    await handleSearch({ query: 'ipc-query' }, mockClient);
+
+    expect(mockClient.send).toHaveBeenCalledTimes(1);
+    const event = vi.mocked(mockClient.send).mock.calls[0]?.[0];
+    expect(event).toMatchObject({
+      type: 'search',
+      query: 'ipc-query',
+      count: 10,
+      results: [
+        { title: 'R1', url: 'https://example.com/1', snippet: 'S1' },
+      ],
+    });
+    expect(event).toHaveProperty('timestamp');
   });
 });

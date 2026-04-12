@@ -1,6 +1,7 @@
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import { z } from 'zod';
+import type { IpcClient } from '../../ipc/client.js';
 import type { SearchResult } from '../../types.js';
 import { loadConfig } from '../../config.js';
 
@@ -40,7 +41,10 @@ const DEFAULT_COUNT = 10;
 const MIN_COUNT = 1;
 const MAX_COUNT = 20;
 
-export async function handleSearch(args: SearchInput): Promise<CallToolResult> {
+export async function handleSearch(
+  args: SearchInput,
+  client?: IpcClient,
+): Promise<CallToolResult> {
   const { braveApiKey } = loadConfig();
   const rawCount = args.count ?? DEFAULT_COUNT;
   const count = Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.trunc(rawCount)));
@@ -70,6 +74,14 @@ export async function handleSearch(args: SearchInput): Promise<CallToolResult> {
       log += `[search]      ${r.url}\n`;
     });
     process.stderr.write(log);
+
+    client?.send({
+      type: 'search',
+      timestamp: Date.now(),
+      query: args.query,
+      count,
+      results,
+    });
 
     return {
       content: [

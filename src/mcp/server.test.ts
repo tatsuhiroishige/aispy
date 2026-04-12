@@ -87,7 +87,7 @@ describe('createServer', () => {
       arguments: { query: 'hello' },
     });
     expect(handleSearch).toHaveBeenCalledTimes(1);
-    expect(handleSearch).toHaveBeenCalledWith({ query: 'hello' });
+    expect(handleSearch).toHaveBeenCalledWith({ query: 'hello' }, undefined);
     expect(result.content).toEqual([{ type: 'text', text: 'search-result' }]);
   });
 
@@ -98,7 +98,7 @@ describe('createServer', () => {
       arguments: { url: 'https://example.com' },
     });
     expect(handleFetch).toHaveBeenCalledTimes(1);
-    expect(handleFetch).toHaveBeenCalledWith({ url: 'https://example.com' });
+    expect(handleFetch).toHaveBeenCalledWith({ url: 'https://example.com' }, undefined);
     expect(result.content).toEqual([{ type: 'text', text: 'fetch-result' }]);
   });
 

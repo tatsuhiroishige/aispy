@@ -1,6 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 vi.mock('axios');
 import axios from 'axios';
+import type { IpcClient } from '../../ipc/client.js';
+import type { FetchEvent, FetchStartEvent } from '../../types.js';
 import { handleFetch } from './fetch.js';
 
 const mockedGet = vi.mocked(axios.get);
@@ -79,5 +81,32 @@ describe('handleFetch', () => {
     });
 
     expect(result.isError).toBeFalsy();
+  });
+
+  it('sends FetchStartEvent and FetchEvent via IpcClient when provided', async () => {
+    mockedGet.mockResolvedValueOnce({ data: '<h1>Title</h1><p>content</p>' });
+
+    const mockClient: IpcClient = { send: vi.fn(), close: vi.fn() };
+
+    await handleFetch({ url: 'https://example.com/ipc' }, mockClient);
+
+    expect(mockClient.send).toHaveBeenCalledTimes(2);
+
+    const firstEvent = vi.mocked(mockClient.send).mock.calls[0]?.[0] as FetchStartEvent;
+    expect(firstEvent).toMatchObject({
+      type: 'fetch-start',
+      url: 'https://example.com/ipc',
+    });
+    expect(firstEvent).toHaveProperty('timestamp');
+
+    const secondEvent = vi.mocked(mockClient.send).mock.calls[1]?.[0] as FetchEvent;
+    expect(secondEvent).toMatchObject({
+      type: 'fetch',
+      url: 'https://example.com/ipc',
+    });
+    expect(secondEvent).toHaveProperty('timestamp');
+    expect(secondEvent.durationMs).toBeGreaterThanOrEqual(0);
+    expect(secondEvent.tokens).toBeGreaterThan(0);
+    expect(secondEvent.content).toBeTruthy();
   });
 });

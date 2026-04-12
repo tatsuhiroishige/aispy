@@ -5,6 +5,7 @@ import {
   type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { ZodType } from 'zod';
+import type { IpcClient } from '../ipc/client.js';
 import {
   fetchInputSchema,
   fetchTool,
@@ -40,7 +41,7 @@ function parseOrError<T>(
   return { ok: true, data: parsed.data };
 }
 
-export function createServer(): Server {
+export function createServer(client?: IpcClient): Server {
   const server = new Server(
     { name: 'aispy', version: '0.0.0' },
     { capabilities: { tools: {} } },
@@ -56,12 +57,12 @@ export function createServer(): Server {
       case 'search': {
         const parsed = parseOrError(searchInputSchema, 'search', args);
         if (!parsed.ok) return parsed.result;
-        return handleSearch(parsed.data);
+        return handleSearch(parsed.data, client);
       }
       case 'fetch': {
         const parsed = parseOrError(fetchInputSchema, 'fetch', args);
         if (!parsed.ok) return parsed.result;
-        return handleFetch(parsed.data);
+        return handleFetch(parsed.data, client);
       }
       default:
         return {

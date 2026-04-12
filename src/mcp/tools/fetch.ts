@@ -2,6 +2,7 @@ import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import { z } from 'zod';
 import { htmlToText } from '../../core/htmlToText.js';
+import type { IpcClient } from '../../ipc/client.js';
 
 export const fetchInputSchema = z.object({
   url: z.string().url(),
@@ -30,8 +31,19 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const PREVIEW_CHARS = 200;
 const CHARS_PER_TOKEN = 4;
 
-export async function handleFetch(args: FetchInput): Promise<CallToolResult> {
+export async function handleFetch(
+  args: FetchInput,
+  client?: IpcClient,
+): Promise<CallToolResult> {
   try {
+    const startTime = Date.now();
+
+    client?.send({
+      type: 'fetch-start',
+      timestamp: Date.now(),
+      url: args.url,
+    });
+
     const response = await axios.get<string>(args.url, {
       responseType: 'text',
       timeout: REQUEST_TIMEOUT_MS,
@@ -45,6 +57,15 @@ export async function handleFetch(args: FetchInput): Promise<CallToolResult> {
     log += `[fetch]   tokens: ${tokens}\n`;
     log += `[fetch]   preview: ${preview}\n`;
     process.stderr.write(log);
+
+    client?.send({
+      type: 'fetch',
+      timestamp: Date.now(),
+      url: args.url,
+      content,
+      tokens,
+      durationMs: Date.now() - startTime,
+    });
 
     return {
       content: [
