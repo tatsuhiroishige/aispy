@@ -34,6 +34,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
   const [showStats, setShowStats] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const exportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchCountRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -41,11 +42,25 @@ function AppInner({ connected = true }: { connected: boolean }) {
     };
   }, []);
 
+  // Auto-open PageViewer when a new FetchEvent arrives
+  useEffect(() => {
+    const fetchEvents = events.filter((e) => e.type === 'fetch');
+    if (fetchEvents.length > lastFetchCountRef.current) {
+      const latest = fetchEvents[fetchEvents.length - 1];
+      if (latest && latest.type === 'fetch') {
+        setViewerState({ url: latest.url, content: latest.content, scrollOffset: 0 });
+      }
+      lastFetchCountRef.current = fetchEvents.length;
+    }
+  }, [events]);
+
   const contentHeight = Math.max(5, rows - 4);
 
   const handleTab = useCallback(() => {
-    setFocusPane((prev) => (prev === 'log' ? 'viewer' : 'log'));
-  }, []);
+    if (viewerState) {
+      setFocusPane((prev) => (prev === 'log' ? 'viewer' : 'log'));
+    }
+  }, [viewerState]);
 
   const handleDown = useCallback(() => {
     if (focusPane === 'log') {
@@ -182,32 +197,35 @@ function AppInner({ connected = true }: { connected: boolean }) {
     { isActive: !isFiltering },
   );
 
+  const showViewer = viewerState !== null;
+
   return (
     <Box flexDirection="column" width="100%" height={rows}>
-      <Box flexGrow={1}>
-        <Box width="30%" flexDirection="column">
-          <ActivityLog
-            events={filteredEvents}
-            focused={focusPane === 'log'}
-            selectedIndex={selectedIndex}
-            height={isFiltering ? contentHeight - 1 : contentHeight}
-          />
-          {isFiltering && <FilterInput value={filterText} onChange={setFilterText} />}
-        </Box>
-        <Box flexGrow={1}>
+      <Box flexGrow={1} flexDirection="column">
+        {showViewer ? (
           <PageViewer
             viewer={viewerState}
             focused={focusPane === 'viewer'}
             height={contentHeight}
           />
-        </Box>
+        ) : (
+          <>
+            <ActivityLog
+              events={filteredEvents}
+              focused={focusPane === 'log'}
+              selectedIndex={selectedIndex}
+              height={isFiltering ? contentHeight - 1 : contentHeight}
+            />
+            {isFiltering && <FilterInput value={filterText} onChange={setFilterText} />}
+          </>
+        )}
       </Box>
       {exportMessage && (
         <Box>
           <Text color="green">{exportMessage}</Text>
         </Box>
       )}
-      <StatusBar stats={stats} connected={connected} focusPane={focusPane} hasViewerContent={viewerState !== null} />
+      <StatusBar stats={stats} connected={connected} focusPane={showViewer ? 'viewer' : 'log'} hasViewerContent={showViewer} />
       {showStats && <StatsModal events={events} stats={stats} />}
     </Box>
   );

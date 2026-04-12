@@ -24,12 +24,12 @@ describe('SearchEntry', () => {
     );
     const frame = lastFrame()!;
 
-    expect(frame).toContain('First');
-    expect(frame).toContain('Second');
+    expect(frame).toContain('First Result');
+    expect(frame).toContain('Second Result');
 
-    const skipCount = (frame.match(/←s/g) ?? []).length;
+    const skipCount = (frame.match(/skip/g) ?? []).length;
     expect(skipCount).toBe(2);
-    expect(frame).not.toContain('←r');
+    expect(frame).not.toContain('read');
   });
 
   it('shows read for fetched URL and skip for others', () => {
@@ -39,7 +39,7 @@ describe('SearchEntry', () => {
     );
     const frame = lastFrame()!;
 
-    expect(frame).toContain('←r');
-    expect(frame).toContain('←s');
+    expect(frame).toContain('read');
+    expect(frame).toContain('skip');
   });
 });

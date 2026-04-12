@@ -44,7 +44,6 @@ describe('App', () => {
     const frame = lastFrame()!;
 
     expect(frame).toContain('Waiting for events');
-    expect(frame).toContain('No page selected');
     expect(frame).toContain('●');
   });
 
@@ -89,6 +88,8 @@ describe('App', () => {
     });
 
     const frame = lastFrame()!;
-    expect(frame).toContain('No page selected');
+    // FetchStartEvent has no content — viewer should not show page content
+    expect(frame).toContain('Fetching:');
+    expect(frame).not.toContain('page content');
   });
 });
