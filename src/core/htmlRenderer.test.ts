@@ -241,4 +241,43 @@ describe('renderHtmlToTerminal', () => {
     expect(out).not.toContain('Home');
     expect(out).not.toContain('Copyright');
   });
+
+  it('hides elements with CSS display:none via <style> block', () => {
+    const out = render(
+      '<style>.cookie-banner { display: none }</style>' +
+      '<div class="cookie-banner">Accept cookies?</div>' +
+      '<p>Visible content</p>'
+    );
+    expect(out).toContain('Visible content');
+    expect(out).not.toContain('cookie');
+  });
+
+  it('hides elements with inline style display:none', () => {
+    const out = render(
+      '<div style="display:none">Hidden sidebar</div>' +
+      '<p>Main content</p>'
+    );
+    expect(out).toContain('Main content');
+    expect(out).not.toContain('Hidden sidebar');
+  });
+
+  it('hides elements with CSS visibility:hidden', () => {
+    const out = render(
+      '<style>.invisible { visibility: hidden }</style>' +
+      '<p class="invisible">Ghost text</p>' +
+      '<p>Real text</p>'
+    );
+    expect(out).toContain('Real text');
+    expect(out).not.toContain('Ghost text');
+  });
+
+  it('hides inline elements with display:none inside paragraphs', () => {
+    const out = render(
+      '<style>.ad { display: none }</style>' +
+      '<p>Before <span class="ad">Buy now!</span> After</p>'
+    );
+    expect(out).toContain('Before');
+    expect(out).toContain('After');
+    expect(out).not.toContain('Buy now');
+  });
 });

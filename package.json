@@ -2,7 +2,17 @@
   "name": "aispy",
   "version": "0.1.0",
   "description": "AI Search Process Visualizer — MCP server + TUI that lets humans watch what AI is searching/reading on the web",
-  "keywords": ["mcp", "ai", "search", "tui", "ink", "claude", "brave", "web-search", "terminal"],
+  "keywords": [
+    "mcp",
+    "ai",
+    "search",
+    "tui",
+    "ink",
+    "claude",
+    "brave",
+    "web-search",
+    "terminal"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,7 +22,11 @@
   "bin": {
     "aispy": "dist/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20.19.0 || >=22.0.0"
   },
@@ -29,6 +43,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@mozilla/readability": "0.6.0",
     "axios": "1.15.0",
+    "css-tree": "3.2.1",
     "dotenv": "17.4.1",
     "ink": "6.8.0",
     "jsdom": "27.0.1",
@@ -38,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/css-tree": "2.3.11",
     "@types/jsdom": "28.0.1",
     "@types/node": "25.6.0",
     "@types/react": "19.2.14",

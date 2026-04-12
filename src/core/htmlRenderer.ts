@@ -1,3 +1,6 @@
+import { createStyleResolver } from './cssResolver.js';
+import type { StyleResolver } from './cssResolver.js';
+
 const SKIP_ELEMENTS = new Set([
   'SCRIPT', 'STYLE', 'NAV', 'FOOTER', 'HEADER',
   'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA',
@@ -19,10 +22,11 @@ interface RenderContext {
   listType: 'ul' | 'ol' | null;
   listCounter: number;
   inPre: boolean;
+  styles: StyleResolver | null;
 }
 
-function defaultContext(width: number): RenderContext {
-  return { width, indent: 0, listType: null, listCounter: 0, inPre: false };
+function defaultContext(width: number, styles: StyleResolver | null): RenderContext {
+  return { width, indent: 0, listType: null, listCounter: 0, inPre: false, styles };
 }
 
 function wordWrap(text: string, maxWidth: number, indent: number): string {
@@ -47,7 +51,7 @@ function wordWrap(text: string, maxWidth: number, indent: number): string {
   return lines.join('\n');
 }
 
-function collectInlineText(node: Node): string {
+function collectInlineText(node: Node, styles?: StyleResolver | null): string {
   if (node.nodeType === 3 /* TEXT_NODE */) {
     return node.textContent ?? '';
   }
@@ -59,38 +63,50 @@ function collectInlineText(node: Node): string {
   if (SKIP_ELEMENTS.has(tag)) return '';
   if (BLOCK_ELEMENTS.has(tag)) return '';
 
+  // CSS-based hiding for inline elements
+  if (styles) {
+    const computed = styles.getComputedStyle(el);
+    if (computed.display === 'none' || computed.visibility === 'hidden') return '';
+  }
+
   switch (tag) {
     case 'BR':
       return '\n';
     case 'A': {
       const href = el.getAttribute('href') ?? '';
-      const text = inlineChildren(el);
+      const text = inlineChildren(el, styles);
       if (href && href !== text && !href.startsWith('#') && !href.startsWith('javascript:')) {
         return `${text} (${href})`;
       }
       return text;
     }
     case 'CODE':
-      return '`' + inlineChildren(el) + '`';
+      return '`' + inlineChildren(el, styles) + '`';
     case 'IMG': {
       const alt = el.getAttribute('alt');
       return alt ? `[image: ${alt}]` : '';
     }
     default:
-      return inlineChildren(el);
+      return inlineChildren(el, styles);
   }
 }
 
-function inlineChildren(el: Element): string {
+function inlineChildren(el: Element, styles?: StyleResolver | null): string {
   let result = '';
   for (const child of el.childNodes) {
-    result += collectInlineText(child);
+    result += collectInlineText(child, styles);
   }
   return result;
 }
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/[ \t]+/g, ' ').replace(/\n /g, '\n').trim();
+}
+
+function isCssHidden(el: Element, ctx: RenderContext): boolean {
+  if (!ctx.styles) return false;
+  const computed = ctx.styles.getComputedStyle(el);
+  return computed.display === 'none' || computed.visibility === 'hidden';
 }
 
 function renderNode(node: Node, ctx: RenderContext): string[] {
@@ -112,6 +128,9 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
 
   if (SKIP_ELEMENTS.has(tag)) return [];
 
+  // CSS-based hiding: skip elements with display:none or visibility:hidden
+  if (isCssHidden(el, ctx)) return [];
+
   switch (tag) {
     case 'H1':
     case 'H2':
@@ -121,12 +140,12 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
     case 'H6': {
       const level = parseInt(tag[1]!, 10);
       const prefix = '#'.repeat(level) + ' ';
-      const text = inlineChildren(el).trim();
+      const text = inlineChildren(el, ctx.styles).trim();
       return [' '.repeat(ctx.indent) + prefix + text];
     }
 
     case 'P': {
-      const text = normalizeWhitespace(inlineChildren(el));
+      const text = normalizeWhitespace(inlineChildren(el, ctx.styles));
       if (!text) return [];
       return [wordWrap(text, ctx.width, ctx.indent)];
     }
@@ -221,7 +240,7 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
     case 'S':
     case 'U':
     case 'IMG': {
-      const text = normalizeWhitespace(collectInlineText(el));
+      const text = normalizeWhitespace(collectInlineText(el, ctx.styles));
       if (!text) return [];
       return [wordWrap(text, ctx.width, ctx.indent)];
     }
@@ -257,7 +276,7 @@ function renderListItem(li: Element, ctx: RenderContext): string[] {
         continue;
       }
     }
-    const text = collectInlineText(child);
+    const text = collectInlineText(child, ctx.styles);
     if (text.trim()) inlineParts.push(text);
   }
 
@@ -315,7 +334,7 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
     const cells: string[] = [];
     for (const cell of tr.children) {
       if (cell.tagName === 'TD' || cell.tagName === 'TH') {
-        cells.push(normalizeWhitespace(inlineChildren(cell)));
+        cells.push(normalizeWhitespace(inlineChildren(cell, ctx.styles)));
       }
     }
     return cells;
@@ -468,6 +487,9 @@ function renderChildren(el: Element, ctx: RenderContext): string[] {
     const childEl = child as Element;
     if (SKIP_ELEMENTS.has(childEl.tagName)) continue;
 
+    // CSS-based hiding in renderChildren
+    if (isCssHidden(childEl, ctx)) continue;
+
     if (BLOCK_ELEMENTS.has(childEl.tagName)) {
       // Flush pending inline text
       const text = normalizeWhitespace(pendingInline);
@@ -477,7 +499,7 @@ function renderChildren(el: Element, ctx: RenderContext): string[] {
       pendingInline = '';
       blocks.push(...renderNode(childEl, ctx));
     } else {
-      pendingInline += collectInlineText(childEl);
+      pendingInline += collectInlineText(childEl, ctx.styles);
     }
   }
 
@@ -493,7 +515,8 @@ function renderChildren(el: Element, ctx: RenderContext): string[] {
 /** Walk a DOM Document and produce layout-aware terminal text. */
 export function renderHtmlToTerminal(doc: Document, width?: number): string {
   const effectiveWidth = width ?? 80;
-  const ctx = defaultContext(effectiveWidth);
+  const styles = createStyleResolver(doc);
+  const ctx = defaultContext(effectiveWidth, styles);
   const body = doc.body;
   if (!body) return '';
 
