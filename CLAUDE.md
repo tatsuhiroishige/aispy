@@ -37,5 +37,5 @@ Rule ファイルは自動 load しない。作業に入る前に該当する fi
 
 ## Status
 
-Phase 1 完了。MCP server + IPC + Ink TUI が動作。
-次の step: Phase 2（コンテンツ品質向上: @mozilla/readability、ANSI カラー、キャッシュ）。
+Phase 2 完了。Readability、ANSI カラー、fetch cache、filter、stats modal、read/skip labels 実装済み。
+次の step: Phase 3（CSS layout 対応レンダリング）または Phase 4（npm 公開、複数バックエンド対応）。

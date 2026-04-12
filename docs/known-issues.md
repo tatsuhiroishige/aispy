@@ -1,34 +1,41 @@
 # 既知の課題と改善候補
 
-## Phase 1 で発見された課題
+## 解決済み (Phase 1.5 + Phase 2)
 
-### P1: StatusBar が狭い幅で truncate される
-- **症状**: ペイン幅が狭いと `connected` → `connecte`、`searches` → `searche` のように切れる
-- **原因**: StatusBar のテキストが terminal 幅を超えた場合の省略処理がない
-- **対応案**: テキストを短縮形に切り替え (`3 srch | 5 pg | 8.2k tok`) またはレスポンシブ表示
+- ~~P1: StatusBar truncation~~ → responsive format 実装済み
+- ~~P2: キーバインドヘルプ~~ → context-sensitive key hints 実装済み
+- ~~P3: formatTime 重複~~ → `src/ui/formatTime.ts` に抽出済み
+- ~~P4: FetchStartEvent Enter~~ → Enter guard 実装済み
+- ~~Phase 2 全項目~~ → readability, ANSI color, cache, filter, stats, read/skip 実装済み
 
-### P2: キーバインドヘルプが画面に表示されない
-- **症状**: Tab/j/k/Enter/o/q のヒントがどこにも表示されない。spec §2.2 下部にはヒント記載あり
-- **対応案**: StatusBar にフォーカス状態に応じたキーヒント表示 (`[Tab] switch [j/k] scroll [Enter] preview [o] open [q] back`)
-
-### P3: `formatTime` 関数が SearchEntry / FetchEntry で重複
-- **症状**: 同じ timestamp→HH:MM:SS 変換が 2 ファイルにコピー
-- **対応案**: `src/ui/utils.ts` に抽出
-
-### P4: FetchStartEvent 選択時に Enter で空の PageViewer が出る
-- **症状**: "Fetching..." エントリ (FetchStartEvent) は content を持たない。選択して Enter → 何も表示されない
-- **対応案**: FetchStartEvent 選択時は Enter を無視、または "Fetching in progress..." を表示
+## 未解決
 
 ### P5: Node.js engine warning
-- **症状**: ESLint 10 / `@eslint/js` が Node ≥ 20.19 を要求。ローカル Node は 20.18.3
-- **影響**: 動作はする (npm install 成功、全 test pass) が engine warning が出る
-- **対応案**: Node アップデートまたは ESLint 9.x にダウングレード
+- **症状**: ESLint 10 が Node ≥ 20.19 を要求。ローカル Node は 20.18.3
+- **影響**: 動作はする。engine warning が出るだけ
+- **対応案**: Node アップデート
 
-## Phase 2 候補 (spec §6 より)
+### P6: `--experimental-require-module` が必要
+- **症状**: jsdom 27 の dep chain が ESM only。フラグなしで起動すると `ERR_REQUIRE_ESM`
+- **影響**: `node dist/index.js` ではなく `node --experimental-require-module dist/index.js` で起動する必要
+- **対応案**: Node 22+ にアップデート (require(esm) が stable)、または jsdom を lazy import に変更
 
-- [ ] @mozilla/readability でメインコンテンツ抽出
-- [ ] ANSI カラーによるシンタックスハイライト (見出し、リンク、コードブロック)
-- [ ] ページ取得キャッシュ (同じ URL の再取得回避)
-- [ ] `/` キーでログフィルタ
-- [ ] `s` キーでセッション統計詳細表示
-- [ ] search 結果の read/skip ラベル (retroactive: fetch 済み URL にマーク)
+### P7: 長時間 session での elapsedMs 精度
+- **症状**: StatusBar の elapsed time が session 開始からの経過で、`Date.now() - startTime` を毎回計算
+- **影響**: 表示上だけの問題。長時間 session で秒数が大きくなる (e.g., 2076.0s)
+- **対応案**: MM:SS 形式に変換、または idle 時間を除外
+
+## Phase 3 候補 (spec §6)
+
+- [ ] CSS layout 対応 TUI レンダリング (Chawan 級)
+- [ ] CSS パーサー + スタイル解決
+- [ ] yoga-layout ベースの flexbox
+- [ ] ボックス描画文字によるボーダー
+
+## Phase 4 候補 (spec §6)
+
+- [ ] npm 公開 (`npm install -g aispy`)
+- [ ] 複数検索バックエンド (Brave, Serper, Tavily 切り替え)
+- [ ] 複数 AI クライアント検証 (Claude Code, Cursor, Gemini CLI)
+- [ ] セッションエクスポート (JSON/Markdown)
+- [ ] ドキュメント + サンプルワークフロー
