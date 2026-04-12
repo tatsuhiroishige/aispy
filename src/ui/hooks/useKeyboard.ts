@@ -10,6 +10,7 @@ export interface KeyHandlers {
   onFilter(): void;
   onStats(): void;
   onEscape(): void;
+  onExport(): void;
 }
 
 export interface KeyboardOptions {
@@ -19,6 +20,10 @@ export interface KeyboardOptions {
 /** Wraps Ink useInput and dispatches to named key handlers. */
 export function useKeyboard(handlers: KeyHandlers, options?: KeyboardOptions): void {
   useInput((input, key) => {
+    if (input === 'e' && key.ctrl) {
+      handlers.onExport();
+      return;
+    }
     if (key.tab) {
       handlers.onTab();
       return;

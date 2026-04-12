@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react';
-import { Box, useApp, useStdout, useInput } from 'ink';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { writeFileSync } from 'node:fs';
+import { Box, Text, useApp, useStdout, useInput } from 'ink';
 import type { EventStore } from '../core/store.js';
 import { openInBrowser } from '../core/browserOpen.js';
+import { exportToJson, exportToMarkdown } from '../core/exportSession.js';
 import { StoreProvider } from './contexts/StoreContext.js';
 import { useEventStore } from './hooks/useEventStore.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
@@ -30,6 +32,14 @@ function AppInner({ connected = true }: { connected: boolean }) {
   const [filterText, setFilterText] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const exportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exportTimerRef.current) clearTimeout(exportTimerRef.current);
+    };
+  }, []);
 
   const contentHeight = Math.max(5, rows - 4);
 
@@ -101,6 +111,27 @@ function AppInner({ connected = true }: { connected: boolean }) {
     setShowStats((s) => !s);
   }, []);
 
+  const handleExport = useCallback(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const jsonPath = `aispy-session-${ts}.json`;
+    const mdPath = `aispy-session-${ts}.md`;
+
+    try {
+      writeFileSync(jsonPath, exportToJson(events, stats));
+      writeFileSync(mdPath, exportToMarkdown(events, stats));
+      setExportMessage(`Exported: ${jsonPath}, ${mdPath}`);
+    } catch (err) {
+      setExportMessage(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (exportTimerRef.current) clearTimeout(exportTimerRef.current);
+    exportTimerRef.current = setTimeout(() => {
+      setExportMessage(null);
+    }, 3000);
+  }, [events, stats]);
+
   const handleEscape = useCallback(() => {
     setIsFiltering(false);
     setFilterText('');
@@ -146,6 +177,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
       onFilter: handleFilter,
       onStats: handleStats,
       onEscape: handleEscape,
+      onExport: handleExport,
     },
     { isActive: !isFiltering },
   );
@@ -170,6 +202,11 @@ function AppInner({ connected = true }: { connected: boolean }) {
           />
         </Box>
       </Box>
+      {exportMessage && (
+        <Box>
+          <Text color="green">{exportMessage}</Text>
+        </Box>
+      )}
       <StatusBar stats={stats} connected={connected} focusPane={focusPane} hasViewerContent={viewerState !== null} />
       {showStats && <StatsModal events={events} stats={stats} />}
     </Box>

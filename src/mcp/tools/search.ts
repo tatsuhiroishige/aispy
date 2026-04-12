@@ -1,9 +1,9 @@
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import axios from 'axios';
 import { z } from 'zod';
 import type { IpcClient } from '../../ipc/client.js';
 import type { SearchResult } from '../../types.js';
 import { loadConfig } from '../../config.js';
+import { createSearchBackend } from '../../search/index.js';
 
 export const searchInputSchema = z.object({
   query: z.string().min(1),
@@ -25,18 +25,6 @@ export const searchTool: Tool = {
   },
 };
 
-interface BraveWebResult {
-  title?: string;
-  url?: string;
-  description?: string;
-}
-
-interface BraveSearchResponse {
-  web?: {
-    results?: BraveWebResult[];
-  };
-}
-
 const DEFAULT_COUNT = 10;
 const MIN_COUNT = 1;
 const MAX_COUNT = 20;
@@ -45,28 +33,13 @@ export async function handleSearch(
   args: SearchInput,
   client?: IpcClient,
 ): Promise<CallToolResult> {
-  const { braveApiKey } = loadConfig();
+  const config = loadConfig();
   const rawCount = args.count ?? DEFAULT_COUNT;
   const count = Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.trunc(rawCount)));
 
   try {
-    const response = await axios.get<BraveSearchResponse>(
-      'https://api.search.brave.com/res/v1/web/search',
-      {
-        params: { q: args.query, count },
-        headers: {
-          'X-Subscription-Token': braveApiKey,
-          Accept: 'application/json',
-        },
-      },
-    );
-
-    const rawResults = response.data.web?.results ?? [];
-    const results: SearchResult[] = rawResults.map((r) => ({
-      title: r.title ?? '',
-      url: r.url ?? '',
-      snippet: r.description ?? '',
-    }));
+    const backend = createSearchBackend(config);
+    const results: SearchResult[] = await backend.search(args.query, count);
 
     let log = `[search] query: ${args.query}\n`;
     results.forEach((r, i) => {

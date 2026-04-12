@@ -20,6 +20,7 @@ function makeHandlers(): KeyHandlers {
     onFilter: vi.fn(),
     onStats: vi.fn(),
     onEscape: vi.fn(),
+    onExport: vi.fn(),
   };
 }
 
@@ -87,5 +88,12 @@ describe('useKeyboard', () => {
     // Ink buffers standalone escape and flushes via setImmediate
     await new Promise((resolve) => { setImmediate(resolve); });
     expect(handlers.onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches Ctrl+E to onExport', () => {
+    const handlers = makeHandlers();
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('\x05');
+    expect(handlers.onExport).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,10 +1,20 @@
 {
   "name": "aispy",
   "version": "0.0.0",
-  "description": "AI Search Process Visualizer — MCP server + Ink TUI that lets humans watch what AI is searching/reading on the web.",
+  "description": "AI Search Process Visualizer — MCP server + TUI that lets humans watch what AI is searching/reading on the web",
+  "keywords": ["mcp", "ai", "search", "tui", "ink", "claude", "brave", "web-search", "terminal"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tatsu/aispy"
+  },
   "type": "module",
   "bin": {
     "aispy": "dist/index.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=20.19.0 || >=22.0.0"
   },
   "scripts": {
     "build": "tsc",
