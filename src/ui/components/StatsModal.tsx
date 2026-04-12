@@ -17,9 +17,9 @@ export function StatsModal({ events, stats }: StatsModalProps) {
       flexDirection="column"
       borderStyle="round"
       borderColor="cyan"
-      paddingX={1}
+      paddingX={2}
     >
-      <Text bold color="cyan">Session Stats</Text>
+      <Text bold color="cyan">{'  '}Session Stats</Text>
       <Text> </Text>
 
       <Text>Searches: {stats.searchCount}</Text>
