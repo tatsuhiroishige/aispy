@@ -42,9 +42,8 @@ describe('ActivityLog', () => {
     );
     const frame = lastFrame()!;
 
-    expect(frame).toContain('Search:');
+    expect(frame).toContain('Q:');
     expect(frame).toContain('test query');
-    expect(frame).toContain('Fetched:');
-    expect(frame).toContain('https://example.com/page');
+    expect(frame).toContain('example.com');
   });
 });

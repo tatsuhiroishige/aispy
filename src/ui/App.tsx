@@ -185,7 +185,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
   return (
     <Box flexDirection="column" width="100%" height={rows}>
       <Box flexGrow={1}>
-        <Box width="40%" flexDirection="column">
+        <Box width="30%" flexDirection="column">
           <ActivityLog
             events={filteredEvents}
             focused={focusPane === 'log'}
