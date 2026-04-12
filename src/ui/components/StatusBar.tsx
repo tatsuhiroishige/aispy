@@ -16,6 +16,14 @@ function formatCompactNumber(n: number): string {
   return n.toLocaleString();
 }
 
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min === 0) return `${sec}s`;
+  return `${min}m${sec.toString().padStart(2, '0')}s`;
+}
+
 function getKeyHints(focusPane: FocusPane, hasViewerContent: boolean): string {
   if (focusPane === 'log') {
     return '[Tab] viewer  [j/k] scroll  [Enter] preview  [q] quit';
@@ -28,7 +36,7 @@ export function StatusBar({ stats, connected, focusPane, hasViewerContent }: Sta
   const { stdout } = useStdout();
   const width = stdout?.columns ?? 80;
 
-  const elapsedSec = (stats.elapsedMs / 1000).toFixed(1);
+  const elapsed = formatElapsed(stats.elapsedMs);
   const narrow = width < 60;
 
   const connectionIndicator = narrow
@@ -37,8 +45,8 @@ export function StatusBar({ stats, connected, focusPane, hasViewerContent }: Sta
   const connectionColor = connected ? 'green' : 'red';
 
   const statsText = narrow
-    ? `${stats.searchCount} srch | ${stats.fetchCount} pg | ${formatCompactNumber(stats.totalTokens)} tok | ${elapsedSec}s`
-    : `${stats.searchCount} searches | ${stats.fetchCount} pages | ${stats.totalTokens.toLocaleString()} tokens | ${elapsedSec}s`;
+    ? `${stats.searchCount} srch | ${stats.fetchCount} pg | ${formatCompactNumber(stats.totalTokens)} tok | ${elapsed}`
+    : `${stats.searchCount} searches | ${stats.fetchCount} pages | ${stats.totalTokens.toLocaleString()} tokens | ${elapsed}`;
 
   const keyHints = getKeyHints(focusPane, hasViewerContent);
 

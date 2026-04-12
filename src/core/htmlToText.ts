@@ -1,8 +1,8 @@
-import { Readability } from '@mozilla/readability';
-import { JSDOM } from 'jsdom';
-import TurndownService from 'turndown';
+export async function htmlToText(html: string, url?: string): Promise<string> {
+  const { JSDOM } = await import('jsdom');
+  const { Readability } = await import('@mozilla/readability');
+  const TurndownService = (await import('turndown')).default;
 
-export function htmlToText(html: string, url?: string): string {
   const dom = new JSDOM(html, { url });
   const reader = new Readability(dom.window.document);
   const article = reader.parse();

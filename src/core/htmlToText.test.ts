@@ -2,36 +2,36 @@ import { describe, it, expect } from 'vitest';
 import { htmlToText } from './htmlToText.js';
 
 describe('htmlToText', () => {
-  it('converts <h1> to an atx heading', () => {
-    const out = htmlToText('<h1>Hello</h1>');
+  it('converts <h1> to an atx heading', async () => {
+    const out = await htmlToText('<h1>Hello</h1>');
     expect(out).toContain('# Hello');
   });
 
-  it('strips <script> content', () => {
-    const out = htmlToText('<script>alert(1)</script><p>body</p>');
+  it('strips <script> content', async () => {
+    const out = await htmlToText('<script>alert(1)</script><p>body</p>');
     expect(out).toContain('body');
     expect(out).not.toContain('alert(1)');
   });
 
-  it('strips <style> content', () => {
-    const out = htmlToText('<style>.a{color:red}</style><p>body</p>');
+  it('strips <style> content', async () => {
+    const out = await htmlToText('<style>.a{color:red}</style><p>body</p>');
     expect(out).toContain('body');
     expect(out).not.toContain('color:red');
   });
 
-  it('converts <ul><li> to dash bullets', () => {
-    const out = htmlToText('<ul><li>a</li><li>b</li></ul>');
+  it('converts <ul><li> to dash bullets', async () => {
+    const out = await htmlToText('<ul><li>a</li><li>b</li></ul>');
     expect(out).toMatch(/^-\s+a$/m);
     expect(out).toMatch(/^-\s+b$/m);
   });
 
-  it('converts <pre><code> to a fenced code block', () => {
-    const out = htmlToText('<pre><code>x = 1</code></pre>');
+  it('converts <pre><code> to a fenced code block', async () => {
+    const out = await htmlToText('<pre><code>x = 1</code></pre>');
     expect(out).toContain('```');
     expect(out).toContain('x = 1');
   });
 
-  it('extracts article content and strips nav/footer', () => {
+  it('extracts article content and strips nav/footer', async () => {
     const html = `
       <!DOCTYPE html>
       <html><head><title>Test</title></head><body>
@@ -45,18 +45,18 @@ describe('htmlToText', () => {
         <footer><p>Footer info copyright 2024</p></footer>
       </body></html>
     `;
-    const out = htmlToText(html);
+    const out = await htmlToText(html);
     expect(out).toContain('Main Article');
     expect(out).toContain('important article content');
     expect(out).not.toContain('Footer info');
   });
 
-  it('falls back on non-article HTML', () => {
-    const out = htmlToText('<p>Hello</p>');
+  it('falls back on non-article HTML', async () => {
+    const out = await htmlToText('<p>Hello</p>');
     expect(out).toContain('Hello');
   });
 
-  it('resolves relative URLs when url is provided', () => {
+  it('resolves relative URLs when url is provided', async () => {
     const html = `
       <!DOCTYPE html>
       <html><head><title>Links</title></head><body>
@@ -67,7 +67,7 @@ describe('htmlToText', () => {
         </article>
       </body></html>
     `;
-    const out = htmlToText(html, 'https://example.com');
+    const out = await htmlToText(html, 'https://example.com');
     expect(out).toContain('[link](https://example.com/relative)');
   });
 });

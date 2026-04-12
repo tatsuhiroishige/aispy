@@ -26,7 +26,7 @@ describe('StatusBar', () => {
     expect(frame).toContain('3 searches');
     expect(frame).toContain('5 pages');
     expect(frame).toContain('8,241 tokens');
-    expect(frame).toContain('14.2s');
+    expect(frame).toContain('14s');
   });
 
   it('shows disconnected state', () => {

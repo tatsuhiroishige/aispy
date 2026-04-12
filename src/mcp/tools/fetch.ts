@@ -65,7 +65,13 @@ export async function handleFetch(
       timeout: REQUEST_TIMEOUT_MS,
     });
 
-    const content = htmlToText(response.data, args.url);
+    let content = await htmlToText(response.data, args.url);
+
+    const MAX_CONTENT_CHARS = 50_000;
+    if (content.length > MAX_CONTENT_CHARS) {
+      content = content.slice(0, MAX_CONTENT_CHARS) + '\n\n[Content truncated at 50,000 characters]';
+    }
+
     const tokens = Math.ceil(content.length / CHARS_PER_TOKEN);
     const preview = content.slice(0, PREVIEW_CHARS);
 
