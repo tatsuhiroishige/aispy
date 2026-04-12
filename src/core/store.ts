@@ -41,7 +41,7 @@ export function createEventStore(): EventStore {
     },
 
     getEvents(): readonly AispyEvent[] {
-      return events;
+      return [...events];
     },
 
     getStats(): SessionStats {
