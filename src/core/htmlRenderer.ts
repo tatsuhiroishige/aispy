@@ -18,6 +18,48 @@ const BLOCK_ELEMENTS = new Set([
   'ADDRESS', 'DETAILS', 'SUMMARY',
 ]);
 
+// CJK and fullwidth characters occupy 2 terminal columns
+function charWidth(code: number): number {
+  if (
+    (code >= 0x1100 && code <= 0x115f) ||   // Hangul Jamo
+    (code >= 0x2e80 && code <= 0x303e) ||   // CJK radicals, symbols
+    (code >= 0x3040 && code <= 0x9fff) ||   // Hiragana, Katakana, CJK Unified
+    (code >= 0xac00 && code <= 0xd7af) ||   // Hangul Syllables
+    (code >= 0xf900 && code <= 0xfaff) ||   // CJK Compatibility Ideographs
+    (code >= 0xfe10 && code <= 0xfe6f) ||   // CJK Compatibility Forms
+    (code >= 0xff01 && code <= 0xff60) ||   // Fullwidth Latin
+    (code >= 0xffe0 && code <= 0xffe6) ||   // Fullwidth signs
+    (code >= 0x20000 && code <= 0x2fffd) || // CJK Unified Ext B-F
+    (code >= 0x30000 && code <= 0x3fffd)    // CJK Unified Ext G
+  ) return 2;
+  return 1;
+}
+
+function displayWidth(str: string): number {
+  let w = 0;
+  for (const ch of str) {
+    w += charWidth(ch.codePointAt(0)!);
+  }
+  return w;
+}
+
+function padEndDisplay(str: string, targetWidth: number): string {
+  const diff = targetWidth - displayWidth(str);
+  return diff > 0 ? str + ' '.repeat(diff) : str;
+}
+
+function sliceDisplay(str: string, maxWidth: number): string {
+  let w = 0;
+  let i = 0;
+  for (const ch of str) {
+    const cw = charWidth(ch.codePointAt(0)!);
+    if (w + cw > maxWidth) break;
+    w += cw;
+    i += ch.length;
+  }
+  return i < str.length ? str.slice(0, i) + '\u2026' : str;
+}
+
 interface FootnoteLink {
   url: string;
   index: number;
@@ -48,7 +90,7 @@ function wordWrap(text: string, maxWidth: number, indent: number): string {
 
   for (let i = 1; i < words.length; i++) {
     const word = words[i]!;
-    if (currentLine.length + 1 + word.length <= available) {
+    if (displayWidth(currentLine) + 1 + displayWidth(word) <= available) {
       currentLine += ' ' + word;
     } else {
       lines.push(prefix + currentLine);
@@ -170,11 +212,11 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
       const text = inlineChildren(el, ctx.styles, ctx.footnotes).trim();
       const headingLine = ' '.repeat(ctx.indent) + prefix + text;
       if (level === 1) {
-        const underlineWidth = Math.min(headingLine.length, ctx.width - ctx.indent);
+        const underlineWidth = Math.min(displayWidth(headingLine), ctx.width - ctx.indent);
         return [headingLine + '\n' + ' '.repeat(ctx.indent) + '\u2550'.repeat(underlineWidth)];
       }
       if (level === 2) {
-        const underlineWidth = Math.min(headingLine.length, ctx.width - ctx.indent);
+        const underlineWidth = Math.min(displayWidth(headingLine), ctx.width - ctx.indent);
         return [headingLine + '\n' + ' '.repeat(ctx.indent) + '\u2500'.repeat(underlineWidth)];
       }
       return [headingLine];
@@ -390,7 +432,7 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
   const naturalWidths: number[] = Array.from({ length: colCount }, () => 0);
   for (const row of rows) {
     for (let i = 0; i < row.length; i++) {
-      naturalWidths[i] = Math.max(naturalWidths[i]!, row[i]!.length);
+      naturalWidths[i] = Math.max(naturalWidths[i]!, displayWidth(row[i]!));
     }
   }
 
@@ -443,15 +485,13 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
     const cells = Array.from({ length: colCount }, (_, i) => {
       const text = row[i] ?? '';
       const w = colWidths[i]!;
-      let content = text;
-      if (content.length > w) {
-        content = content.slice(0, w - 1) + '\u2026';
-      }
+      const content = displayWidth(text) > w ? sliceDisplay(text, w) : text;
       // Right-align numeric data cells, left-align headers
       if (numericCols[i] && !headerRowIndices.includes(rowIdx)) {
-        return ' ' + content.padStart(w) + ' ';
+        const diff = w - displayWidth(content);
+        return ' ' + (diff > 0 ? ' '.repeat(diff) : '') + content + ' ';
       }
-      return ' ' + content.padEnd(w) + ' ';
+      return ' ' + padEndDisplay(content, w) + ' ';
     });
     return prefix + '\u2502' + cells.join('\u2502') + '\u2502';
   }
