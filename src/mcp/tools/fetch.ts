@@ -29,8 +29,22 @@ export const fetchTool: Tool = {
 };
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const JINA_TIMEOUT_MS = 30_000;
+const SPA_MIN_CONTENT_LENGTH = 200;
 const PREVIEW_CHARS = 200;
 const CHARS_PER_TOKEN = 4;
+
+function isSpaLikely(text: string): boolean {
+  if (text.length < SPA_MIN_CONTENT_LENGTH) return true;
+  const head = text.slice(0, 500);
+  return (
+    text.includes('__NEXT_DATA__') ||
+    text.includes('window.__') ||
+    text.includes('createElement') ||
+    text.includes('ReactDOM') ||
+    /\{[\s\S]*\.map\(/.test(head)
+  );
+}
 
 export async function handleFetch(
   args: FetchInput,
@@ -63,9 +77,30 @@ export async function handleFetch(
     const response = await axios.get<string>(args.url, {
       responseType: 'text',
       timeout: REQUEST_TIMEOUT_MS,
+      headers: {
+        'User-Agent': 'aispy/0.1.0 (https://github.com/tatsuhiroishige/aispy)',
+        'Accept': 'text/html,application/xhtml+xml,*/*',
+      },
     });
 
     let content = await htmlToText(response.data, args.url, { renderer: 'terminal', width: 100 });
+
+    if (isSpaLikely(content)) {
+      try {
+        const jinaResponse = await axios.get<string>(
+          `https://r.jina.ai/${args.url}`,
+          {
+            responseType: 'text',
+            timeout: JINA_TIMEOUT_MS,
+            headers: { 'Accept': 'text/markdown' },
+          },
+        );
+        content = jinaResponse.data;
+        process.stderr.write(`[fetch] SPA detected, used Jina Reader for ${args.url}\n`);
+      } catch {
+        // Jina failed, keep original content
+      }
+    }
 
     const MAX_CONTENT_CHARS = 50_000;
     if (content.length > MAX_CONTENT_CHARS) {

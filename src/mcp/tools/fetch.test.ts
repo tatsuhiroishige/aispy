@@ -130,7 +130,10 @@ describe('handleFetch', () => {
   });
 
   it('fetches normally when cache is empty', async () => {
-    mockedGet.mockResolvedValueOnce({ data: '<p>fresh</p>' });
+    const longBody = 'a'.repeat(300);
+    mockedGet.mockResolvedValueOnce({
+      data: `<p>${longBody}</p>`,
+    });
 
     const cache = createFetchCache();
     const result = await handleFetch(
@@ -142,5 +145,84 @@ describe('handleFetch', () => {
     expect(mockedGet).toHaveBeenCalledTimes(1);
     expect(result.isError).toBeFalsy();
     expect(cache.has('https://example.com/miss')).toBe(true);
+  });
+
+  describe('SPA fallback via Jina Reader', () => {
+    it('does NOT trigger Jina fallback for normal HTML pages', async () => {
+      const longBody = 'a'.repeat(300);
+      mockedGet.mockResolvedValueOnce({
+        data: `<h1>Title</h1><p>${longBody}</p>`,
+      });
+
+      await handleFetch({ url: 'https://example.com/normal' });
+
+      expect(mockedGet).toHaveBeenCalledTimes(1);
+      expect(mockedGet.mock.calls[0]?.[0]).toBe('https://example.com/normal');
+    });
+
+    it('triggers Jina fallback when content is too short (SPA-like)', async () => {
+      mockedGet
+        .mockResolvedValueOnce({ data: '<div id="root"></div>' })
+        .mockResolvedValueOnce({ data: '# Rendered Page\n\nFull content from Jina' });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const result = await handleFetch({ url: 'https://spa.example.com' });
+
+      expect(mockedGet).toHaveBeenCalledTimes(2);
+      expect(mockedGet.mock.calls[1]?.[0]).toBe(
+        'https://r.jina.ai/https://spa.example.com',
+      );
+
+      const text =
+        result.content?.[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).toContain('Rendered Page');
+      expect(text).toContain('Full content from Jina');
+
+      const stderrOutput = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(stderrOutput).toContain('SPA detected');
+
+      writeSpy.mockRestore();
+    });
+
+    it('triggers Jina fallback when content contains SPA patterns', async () => {
+      const spaHtml =
+        '<html><body>' +
+        '<p>' + 'x'.repeat(300) + '</p>' +
+        '<p>window.__INITIAL_STATE__</p>' +
+        '</body></html>';
+      mockedGet
+        .mockResolvedValueOnce({ data: spaHtml })
+        .mockResolvedValueOnce({ data: '# Real Content\n\nRendered by Jina' });
+
+      const result = await handleFetch({ url: 'https://next.example.com' });
+
+      expect(mockedGet).toHaveBeenCalledTimes(2);
+      const text =
+        result.content?.[0]?.type === 'text' ? result.content[0].text : '';
+      expect(text).toContain('Real Content');
+    });
+
+    it('keeps original content when Jina Reader fails', async () => {
+      mockedGet
+        .mockResolvedValueOnce({ data: '<div id="app"></div>' })
+        .mockRejectedValueOnce(new Error('Jina timeout'));
+
+      const writeSpy = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const result = await handleFetch({ url: 'https://spa-fail.example.com' });
+
+      expect(mockedGet).toHaveBeenCalledTimes(2);
+      expect(result.isError).toBeFalsy();
+
+      const stderrOutput = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(stderrOutput).not.toContain('SPA detected');
+
+      writeSpy.mockRestore();
+    });
   });
 });

@@ -18,6 +18,11 @@ const BLOCK_ELEMENTS = new Set([
   'ADDRESS', 'DETAILS', 'SUMMARY',
 ]);
 
+interface FootnoteLink {
+  url: string;
+  index: number;
+}
+
 interface RenderContext {
   width: number;
   indent: number;
@@ -25,10 +30,11 @@ interface RenderContext {
   listCounter: number;
   inPre: boolean;
   styles: StyleResolver | null;
+  footnotes: FootnoteLink[];
 }
 
 function defaultContext(width: number, styles: StyleResolver | null): RenderContext {
-  return { width, indent: 0, listType: null, listCounter: 0, inPre: false, styles };
+  return { width, indent: 0, listType: null, listCounter: 0, inPre: false, styles, footnotes: [] };
 }
 
 function wordWrap(text: string, maxWidth: number, indent: number): string {
@@ -53,7 +59,16 @@ function wordWrap(text: string, maxWidth: number, indent: number): string {
   return lines.join('\n');
 }
 
-function collectInlineText(node: Node, styles?: StyleResolver | null): string {
+function addFootnote(footnotes: FootnoteLink[] | null, url: string): number {
+  if (!footnotes) return 0;
+  const existing = footnotes.find(f => f.url === url);
+  if (existing) return existing.index;
+  const index = footnotes.length + 1;
+  footnotes.push({ url, index });
+  return index;
+}
+
+function collectInlineText(node: Node, styles?: StyleResolver | null, footnotes?: FootnoteLink[] | null): string {
   if (node.nodeType === 3 /* TEXT_NODE */) {
     return node.textContent ?? '';
   }
@@ -76,27 +91,31 @@ function collectInlineText(node: Node, styles?: StyleResolver | null): string {
       return '\n';
     case 'A': {
       const href = el.getAttribute('href') ?? '';
-      const text = inlineChildren(el, styles);
+      const text = inlineChildren(el, styles, footnotes);
       if (href && href !== text && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        if (footnotes) {
+          const idx = addFootnote(footnotes, href);
+          return `${text} [${idx}]`;
+        }
         return `${text} (${href})`;
       }
       return text;
     }
     case 'CODE':
-      return '`' + inlineChildren(el, styles) + '`';
+      return '`' + inlineChildren(el, styles, footnotes) + '`';
     case 'IMG': {
       const alt = el.getAttribute('alt');
-      return alt ? `[image: ${alt}]` : '';
+      return alt ? `[Image: ${alt}]` : '';
     }
     default:
-      return inlineChildren(el, styles);
+      return inlineChildren(el, styles, footnotes);
   }
 }
 
-function inlineChildren(el: Element, styles?: StyleResolver | null): string {
+function inlineChildren(el: Element, styles?: StyleResolver | null, footnotes?: FootnoteLink[] | null): string {
   let result = '';
   for (const child of el.childNodes) {
-    result += collectInlineText(child, styles);
+    result += collectInlineText(child, styles, footnotes);
   }
   return result;
 }
@@ -148,12 +167,21 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
     case 'H6': {
       const level = parseInt(tag[1]!, 10);
       const prefix = '#'.repeat(level) + ' ';
-      const text = inlineChildren(el, ctx.styles).trim();
-      return [' '.repeat(ctx.indent) + prefix + text];
+      const text = inlineChildren(el, ctx.styles, ctx.footnotes).trim();
+      const headingLine = ' '.repeat(ctx.indent) + prefix + text;
+      if (level === 1) {
+        const underlineWidth = Math.min(headingLine.length, ctx.width - ctx.indent);
+        return [headingLine + '\n' + ' '.repeat(ctx.indent) + '\u2550'.repeat(underlineWidth)];
+      }
+      if (level === 2) {
+        const underlineWidth = Math.min(headingLine.length, ctx.width - ctx.indent);
+        return [headingLine + '\n' + ' '.repeat(ctx.indent) + '\u2500'.repeat(underlineWidth)];
+      }
+      return [headingLine];
     }
 
     case 'P': {
-      const text = normalizeWhitespace(inlineChildren(el, ctx.styles));
+      const text = normalizeWhitespace(inlineChildren(el, ctx.styles, ctx.footnotes));
       if (!text) return [];
       return [wordWrap(text, ctx.width, ctx.indent)];
     }
@@ -174,7 +202,7 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
       const code = el.querySelector('code');
       const source = code ?? el;
       const rawText = source.textContent ?? '';
-      const indentStr = ' '.repeat(ctx.indent + 2);
+      const indentStr = ' '.repeat(ctx.indent + 2) + '\u2502 ';
       const lines = rawText.split('\n');
       // Trim leading/trailing empty lines
       while (lines.length > 0 && lines[0]!.trim() === '') lines.shift();
@@ -225,7 +253,7 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
       return renderTable(el, ctx);
 
     case 'HR':
-      return [' '.repeat(ctx.indent) + '\u2500'.repeat(Math.min(40, ctx.width - ctx.indent))];
+      return [' '.repeat(ctx.indent) + '\u2500'.repeat(ctx.width - ctx.indent)];
 
     case 'BR':
       return [''];
@@ -248,7 +276,7 @@ function renderNode(node: Node, ctx: RenderContext): string[] {
     case 'S':
     case 'U':
     case 'IMG': {
-      const text = normalizeWhitespace(collectInlineText(el, ctx.styles));
+      const text = normalizeWhitespace(collectInlineText(el, ctx.styles, ctx.footnotes));
       if (!text) return [];
       return [wordWrap(text, ctx.width, ctx.indent)];
     }
@@ -284,7 +312,7 @@ function renderListItem(li: Element, ctx: RenderContext): string[] {
         continue;
       }
     }
-    const text = collectInlineText(child, ctx.styles);
+    const text = collectInlineText(child, ctx.styles, ctx.footnotes);
     if (text.trim()) inlineParts.push(text);
   }
 
@@ -342,7 +370,7 @@ function renderTable(table: Element, ctx: RenderContext): string[] {
     const cells: string[] = [];
     for (const cell of tr.children) {
       if (cell.tagName === 'TD' || cell.tagName === 'TH') {
-        cells.push(normalizeWhitespace(inlineChildren(cell, ctx.styles)));
+        cells.push(normalizeWhitespace(inlineChildren(cell, ctx.styles, ctx.footnotes)));
       }
     }
     return cells;
@@ -629,7 +657,7 @@ function renderChildren(el: Element, ctx: RenderContext): string[] {
       pendingInline = '';
       blocks.push(...renderNode(childEl, ctx));
     } else {
-      pendingInline += collectInlineText(childEl, ctx.styles);
+      pendingInline += collectInlineText(childEl, ctx.styles, ctx.footnotes);
     }
   }
 
@@ -651,6 +679,14 @@ export function renderHtmlToTerminal(doc: Document, width?: number): string {
   if (!body) return '';
 
   const blocks = renderChildren(body, ctx);
+
+  // Append footnote links if any were collected
+  if (ctx.footnotes.length > 0) {
+    const separator = '\u2500'.repeat(8);
+    const footnoteLines = [separator, ...ctx.footnotes.map(f => `[${f.index}] ${f.url}`)];
+    blocks.push(footnoteLines.join('\n'));
+  }
+
   // Join blocks with blank line separation, trim trailing whitespace per line
   return blocks
     .filter(b => b.length > 0)

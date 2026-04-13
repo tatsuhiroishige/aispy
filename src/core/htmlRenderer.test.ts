@@ -15,6 +15,31 @@ describe('renderHtmlToTerminal', () => {
     expect(out).toContain('### Section');
   });
 
+  it('renders <h1> with double-line underline', () => {
+    const out = render('<h1>Main Title</h1>');
+    const lines = out.split('\n');
+    const titleLine = lines.findIndex(l => l.includes('# Main Title'));
+    expect(titleLine).toBeGreaterThanOrEqual(0);
+    const underline = lines[titleLine + 1]!;
+    expect(underline).toMatch(/\u2550+/);
+  });
+
+  it('renders <h2> with single-line underline', () => {
+    const out = render('<h2>Section Title</h2>');
+    const lines = out.split('\n');
+    const titleLine = lines.findIndex(l => l.includes('## Section Title'));
+    expect(titleLine).toBeGreaterThanOrEqual(0);
+    const underline = lines[titleLine + 1]!;
+    expect(underline).toMatch(/\u2500+/);
+  });
+
+  it('renders <h3> without underline', () => {
+    const out = render('<h3>Sub Section</h3>');
+    const lines = out.split('\n');
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain('### Sub Section');
+  });
+
   it('word-wraps paragraphs at the specified width', () => {
     const long = 'word '.repeat(30).trim(); // 149 chars
     const out = render(`<p>${long}</p>`, 40);
@@ -69,17 +94,44 @@ describe('renderHtmlToTerminal', () => {
     expect(childIndent).toBeGreaterThan(parentIndent);
   });
 
-  it('preserves whitespace in <pre><code> blocks', () => {
+  it('preserves whitespace in <pre><code> blocks with pipe prefix', () => {
     const code = '  x = 1\n  y = 2\n  if x:\n    print(y)';
     const out = render(`<pre><code>${code}</code></pre>`);
     expect(out).toContain('x = 1');
     expect(out).toContain('  if x:');
     expect(out).toContain('    print(y)');
+    // Each line should have │ prefix
+    const lines = out.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      expect(line).toContain('\u2502');
+    }
   });
 
-  it('renders links as text (url)', () => {
+  it('renders links with footnote references', () => {
     const out = render('<p>Visit <a href="https://example.com">Example</a> now</p>');
-    expect(out).toContain('Example (https://example.com)');
+    expect(out).toContain('Example [1]');
+    expect(out).toContain('[1] https://example.com');
+  });
+
+  it('deduplicates footnote links with the same URL', () => {
+    const out = render(
+      '<p><a href="https://example.com">First</a> and <a href="https://example.com">Second</a></p>'
+    );
+    expect(out).toContain('First [1]');
+    expect(out).toContain('Second [1]');
+    // Only one footnote entry
+    const footnoteMatches = out.match(/\[1\] https:\/\/example\.com/g);
+    expect(footnoteMatches).toHaveLength(1);
+  });
+
+  it('renders multiple distinct footnote links', () => {
+    const out = render(
+      '<p><a href="https://a.com">A</a> and <a href="https://b.com">B</a></p>'
+    );
+    expect(out).toContain('A [1]');
+    expect(out).toContain('B [2]');
+    expect(out).toContain('[1] https://a.com');
+    expect(out).toContain('[2] https://b.com');
   });
 
   it('renders basic tables with box-drawing borders', () => {
@@ -203,9 +255,9 @@ describe('renderHtmlToTerminal', () => {
     expect(out).not.toContain('color:red');
   });
 
-  it('renders <hr> as box-drawing line', () => {
-    const out = render('<p>Above</p><hr><p>Below</p>');
-    expect(out).toContain('\u2500'.repeat(5));
+  it('renders <hr> as full-width box-drawing line', () => {
+    const out = render('<p>Above</p><hr><p>Below</p>', 60);
+    expect(out).toContain('\u2500'.repeat(60));
     const aboveIdx = out.indexOf('Above');
     const belowIdx = out.indexOf('Below');
     expect(aboveIdx).toBeLessThan(belowIdx);
@@ -216,9 +268,9 @@ describe('renderHtmlToTerminal', () => {
     expect(out).toContain('`npm install`');
   });
 
-  it('renders <img> with alt text', () => {
+  it('renders <img> with alt text as [Image: alt]', () => {
     const out = render('<p>See <img alt="diagram of flow"> here</p>');
-    expect(out).toContain('[image: diagram of flow]');
+    expect(out).toContain('[Image: diagram of flow]');
   });
 
   it('skips <img> without alt text', () => {
