@@ -3,4 +3,5 @@
 # Loads .env and starts aispy in MCP mode
 cd "$(dirname "$0")/.."
 export $(grep -v '^#' .env 2>/dev/null | xargs)
-exec node dist/index.js --mcp
+# --experimental-require-module needed for jsdom's @csstools transitive dep
+exec node --experimental-require-module dist/index.js --mcp
