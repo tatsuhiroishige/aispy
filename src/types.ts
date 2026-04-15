@@ -34,4 +34,19 @@ export interface FetchEvent {
   durationMs: number;
 }
 
-export type AispyEvent = SearchEvent | FetchStartEvent | FetchEvent;
+export interface FetchUpdateEvent {
+  type: 'fetch-update';
+  timestamp: number;
+  url: string;
+  content: string;
+  imagePrologue?: string;
+  decoded?: number;
+  total?: number;
+  phase: 'partial' | 'final';
+}
+
+export type AispyEvent =
+  | SearchEvent
+  | FetchStartEvent
+  | FetchEvent
+  | FetchUpdateEvent;

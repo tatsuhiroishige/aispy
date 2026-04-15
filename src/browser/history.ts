@@ -1,4 +1,5 @@
 import type { LinkHint } from './linkHints.js';
+import type { FormSpec } from './forms.js';
 
 export interface HistoryEntry {
   url: string;
@@ -6,6 +7,7 @@ export interface HistoryEntry {
   content: string;
   imagePrologue?: string;
   links?: LinkHint[];
+  forms?: FormSpec[];
 }
 
 export interface History {

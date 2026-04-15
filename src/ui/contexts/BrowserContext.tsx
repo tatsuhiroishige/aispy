@@ -19,8 +19,10 @@ import {
 import type { HistoryEntry } from '../../browser/history.js';
 import {
   navigateStream as runNavigateStream,
+  submitForm as runSubmitForm,
   type NavigationResult,
 } from '../../browser/navigator.js';
+import type { FormSpec } from '../../browser/forms.js';
 
 export interface BrowserActions {
   navigate(url: string): Promise<NavigationResult>;
@@ -33,6 +35,8 @@ export interface BrowserActions {
   reload(): Promise<NavigationResult | null>;
   setScroll(offset: number): void;
   addFetchedTab(entry: HistoryEntry): void;
+  updateTabByUrl(url: string, patch: Partial<HistoryEntry>): void;
+  submitForm(form: FormSpec, values: Record<string, string>): Promise<NavigationResult>;
 }
 
 export interface BrowserContextValue extends BrowserActions {
@@ -146,6 +150,53 @@ export function BrowserProvider({
     setTabs((tc) => addTab(tc, entry));
   }, []);
 
+  const updateTabByUrl = useCallback(
+    (url: string, patch: Partial<HistoryEntry>) => {
+      setTabs((tc) => {
+        // Find the most recently opened tab whose current entry matches the url
+        for (let i = tc.tabs.length - 1; i >= 0; i--) {
+          const tab = tc.tabs[i]!;
+          const entry = currentEntry(tab);
+          if (entry?.url === url) {
+            return updateCurrentEntry(tc, tab.id, patch);
+          }
+        }
+        return tc;
+      });
+    },
+    [],
+  );
+
+  const submitForm = useCallback(
+    async (form: FormSpec, values: Record<string, string>): Promise<NavigationResult> => {
+      const active = activeTabFn(tabsRef.current);
+      if (!active) {
+        const result = await runSubmitForm(form, values, { width });
+        if (result.ok && result.entry) {
+          setTabs((tc) => addTab(tc, result.entry!));
+        }
+        return result;
+      }
+      setTabs((tc) =>
+        updateTab(tc, active.id, (t) => ({ ...t, loading: true, loadError: undefined })),
+      );
+      const result = await runSubmitForm(form, values, { width });
+      if (result.ok && result.entry) {
+        setTabs((tc) => pushHistoryEntry(tc, active.id, result.entry!));
+      } else {
+        setTabs((tc) =>
+          updateTab(tc, active.id, (t) => ({
+            ...t,
+            loading: false,
+            loadError: result.error ?? 'submit failed',
+          })),
+        );
+      }
+      return result;
+    },
+    [width],
+  );
+
   const closeActiveTab = useCallback(() => {
     const active = activeTabFn(tabsRef.current);
     if (!active) return;
@@ -209,6 +260,8 @@ export function BrowserProvider({
     reload,
     setScroll,
     addFetchedTab,
+    updateTabByUrl,
+    submitForm,
   };
 
   return <BrowserContext value={value}>{children}</BrowserContext>;

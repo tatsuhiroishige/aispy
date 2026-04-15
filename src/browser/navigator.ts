@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { HistoryEntry } from './history.js';
 import { extractLinks } from './linkHints.js';
+import { extractForms, type FormSpec } from './forms.js';
 import { htmlToTerminal, htmlToTerminalStream } from '../core/htmlToText.js';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -64,10 +65,13 @@ export async function navigate(
       options.width ?? 100,
     );
     const title = extractTitle(response.data, url);
-    const links = await extractLinks(response.data, url);
+    const [links, forms] = await Promise.all([
+      extractLinks(response.data, url),
+      extractForms(response.data, url),
+    ]);
     return {
       ok: true,
-      entry: { url, title, content: body, imagePrologue: prologue, links },
+      entry: { url, title, content: body, imagePrologue: prologue, links, forms },
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -105,7 +109,10 @@ export async function* navigateStream(
   }
 
   const title = extractTitle(response.data, url);
-  const links = await extractLinks(response.data, url);
+  const [links, forms] = await Promise.all([
+    extractLinks(response.data, url),
+    extractForms(response.data, url),
+  ]);
 
   for await (const update of htmlToTerminalStream(
     response.data,
@@ -123,7 +130,69 @@ export async function* navigateStream(
         content: update.body,
         imagePrologue: update.prologue,
         links,
+        forms,
       },
+    };
+  }
+}
+
+export async function submitForm(
+  form: FormSpec,
+  values: Record<string, string>,
+  options: NavigateOptions = {},
+): Promise<NavigationResult> {
+  const merged: FormSpec = {
+    ...form,
+    fields: form.fields.map((f) =>
+      values[f.name] !== undefined ? { ...f, value: values[f.name]! } : f,
+    ),
+  };
+
+  if (merged.method === 'get') {
+    const { buildSubmitUrl } = await import('./forms.js');
+    return navigate(buildSubmitUrl(merged), options);
+  }
+
+  const { encodeFormData } = await import('./forms.js');
+  try {
+    const body = encodeFormData(merged.fields);
+    const response = await axios.post<string>(merged.action, body, {
+      responseType: 'text',
+      timeout: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
+      headers: {
+        'User-Agent': 'aispy/0.1.0 (+https://github.com/tatsuhiroishige/aispy)',
+        Accept: 'text/html,application/xhtml+xml,*/*',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      maxRedirects: 5,
+    });
+    const finalUrl =
+      (response.request?.res?.responseUrl as string | undefined) ?? merged.action;
+    const { body: rbody, prologue } = await htmlToTerminal(
+      response.data,
+      finalUrl,
+      options.width ?? 100,
+    );
+    const title = extractTitle(response.data, finalUrl);
+    const [links, forms] = await Promise.all([
+      extractLinks(response.data, finalUrl),
+      extractForms(response.data, finalUrl),
+    ]);
+    return {
+      ok: true,
+      entry: {
+        url: finalUrl,
+        title,
+        content: rbody,
+        imagePrologue: prologue,
+        links,
+        forms,
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
     };
   }
 }

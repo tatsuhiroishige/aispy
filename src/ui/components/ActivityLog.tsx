@@ -54,6 +54,9 @@ export function ActivityLog({ events, selectedIndex, focused, height }: Activity
         if (event.type === 'search') {
           return <SearchEntry key={actualIndex} event={event} selected={isSelected} fetchedUrls={fetchedUrls} />;
         }
+        if (event.type === 'fetch-update') {
+          return null; // progress updates are applied to tabs, not shown in the log
+        }
         return <FetchEntry key={actualIndex} event={event} selected={isSelected} />;
       })}
     </Box>

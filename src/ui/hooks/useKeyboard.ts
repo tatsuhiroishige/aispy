@@ -19,6 +19,9 @@ export interface KeyHandlers {
   onCloseTab?(): void;
   onSwitchTab?(index: number): void;
   onLinkHints?(): void;
+  onBookmark?(): void;
+  onHistorySearch?(): void;
+  onForm?(): void;
 }
 
 export interface KeyboardOptions {
@@ -30,6 +33,10 @@ export function useKeyboard(handlers: KeyHandlers, options?: KeyboardOptions): v
   useInput((input, key) => {
     if (input === 'e' && key.ctrl) {
       handlers.onExport?.();
+      return;
+    }
+    if (input === 'r' && key.ctrl) {
+      handlers.onHistorySearch?.();
       return;
     }
     if (key.tab) {
@@ -75,6 +82,12 @@ export function useKeyboard(handlers: KeyHandlers, options?: KeyboardOptions): v
         return;
       case 'f':
         handlers.onLinkHints?.();
+        return;
+      case 'B':
+        handlers.onBookmark?.();
+        return;
+      case 'F':
+        handlers.onForm?.();
         return;
       case 'o':
         handlers.onOpen?.();

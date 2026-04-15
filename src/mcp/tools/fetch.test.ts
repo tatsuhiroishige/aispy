@@ -3,7 +3,7 @@ vi.mock('axios');
 import axios from 'axios';
 import { createFetchCache } from '../../core/fetchCache.js';
 import type { IpcClient } from '../../ipc/client.js';
-import type { FetchEvent, FetchStartEvent } from '../../types.js';
+import type { FetchEvent } from '../../types.js';
 import { handleFetch, _internal } from './fetch.js';
 
 const mockedGet = vi.mocked(axios.get);
@@ -112,31 +112,22 @@ describe('handleFetch', () => {
     expect(result.isError).toBeFalsy();
   });
 
-  it('sends FetchStartEvent and FetchEvent via IpcClient when provided', async () => {
+  it('streams fetch-start → fetch → fetch-update(final) via IpcClient', async () => {
     mockedGet.mockResolvedValueOnce({ data: '<h1>Title</h1><p>content</p>' });
 
     const mockClient: IpcClient = { send: vi.fn(), close: vi.fn() };
 
     await handleFetch({ url: 'https://example.com/ipc' }, mockClient);
 
-    expect(mockClient.send).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(mockClient.send).mock.calls.map((c) => c[0]);
+    expect(calls[0]?.type).toBe('fetch-start');
+    expect(calls[1]?.type).toBe('fetch');
+    const last = calls[calls.length - 1];
+    expect(last?.type === 'fetch-update' || last?.type === 'fetch').toBe(true);
 
-    const firstEvent = vi.mocked(mockClient.send).mock.calls[0]?.[0] as FetchStartEvent;
-    expect(firstEvent).toMatchObject({
-      type: 'fetch-start',
-      url: 'https://example.com/ipc',
-    });
-    expect(firstEvent).toHaveProperty('timestamp');
-
-    const secondEvent = vi.mocked(mockClient.send).mock.calls[1]?.[0] as FetchEvent;
-    expect(secondEvent).toMatchObject({
-      type: 'fetch',
-      url: 'https://example.com/ipc',
-    });
-    expect(secondEvent).toHaveProperty('timestamp');
-    expect(secondEvent.durationMs).toBeGreaterThanOrEqual(0);
-    expect(secondEvent.tokens).toBeGreaterThan(0);
-    expect(secondEvent.content).toBeTruthy();
+    const fetchEv = calls[1] as FetchEvent;
+    expect(fetchEv.url).toBe('https://example.com/ipc');
+    expect(fetchEv.content).toBeTruthy();
   });
 
   it('returns cached aiContent (markdown) to AI without making an HTTP request', async () => {

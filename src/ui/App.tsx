@@ -16,8 +16,13 @@ import { StatsModal } from './components/StatsModal.js';
 import { UrlBar } from './components/UrlBar.js';
 import { TabBar } from './components/TabBar.js';
 import { LinkHintsModal } from './components/LinkHintsModal.js';
+import { HistorySearchModal } from './components/HistorySearchModal.js';
+import { FormModal } from './components/FormModal.js';
 import { canBack, canForward } from '../browser/history.js';
 import { findByLabel, prefixMatches } from '../browser/linkHints.js';
+import { collectHistoryItems, searchHistory } from '../browser/historySearch.js';
+import { createBookmarkStore, type Bookmark } from '../core/bookmarks.js';
+import type { FormSpec } from '../browser/forms.js';
 import type { FocusPane } from './types.js';
 
 interface AppProps {
@@ -42,6 +47,18 @@ function AppInner({ connected = true }: { connected: boolean }) {
   const [showStats, setShowStats] = useState(false);
   const [linkHintsOpen, setLinkHintsOpen] = useState(false);
   const [linkHintsPrefix, setLinkHintsPrefix] = useState('');
+  const [historySearchOpen, setHistorySearchOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historySelectedIndex, setHistorySelectedIndex] = useState(0);
+  const [activeForm, setActiveForm] = useState<FormSpec | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [formFocusedIndex, setFormFocusedIndex] = useState(0);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | undefined>();
+  const bookmarkStoreRef = useRef(createBookmarkStore());
+  const [bookmarks, setBookmarks] = useState<readonly Bookmark[]>(
+    () => bookmarkStoreRef.current.list(),
+  );
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const exportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchCountRef = useRef(0);
@@ -53,6 +70,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
     };
   }, []);
 
+  const lastEventIdxRef = useRef(0);
   useEffect(() => {
     const searchCount = events.filter((e) => e.type === 'search').length;
     const fetchEvents = events.filter((e) => e.type === 'fetch');
@@ -64,6 +82,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
           url: latest.url,
           title: latest.url,
           content: latest.content,
+          imagePrologue: latest.imagePrologue,
         });
         setFocusPane('viewer');
       }
@@ -72,6 +91,17 @@ function AppInner({ connected = true }: { connected: boolean }) {
     if (searchCount > lastSearchCountRef.current) {
       lastSearchCountRef.current = searchCount;
     }
+
+    for (let i = lastEventIdxRef.current; i < events.length; i++) {
+      const ev = events[i]!;
+      if (ev.type === 'fetch-update') {
+        browser.updateTabByUrl(ev.url, {
+          content: ev.content,
+          imagePrologue: ev.imagePrologue,
+        });
+      }
+    }
+    lastEventIdxRef.current = events.length;
   }, [events, browser]);
 
   const currentEntry = browser.currentEntry;
@@ -179,6 +209,14 @@ function AppInner({ connected = true }: { connected: boolean }) {
     setUrlDraft('');
     setLinkHintsOpen(false);
     setLinkHintsPrefix('');
+    setHistorySearchOpen(false);
+    setHistoryQuery('');
+    setHistorySelectedIndex(0);
+    setActiveForm(null);
+    setFormValues({});
+    setFormFocusedIndex(0);
+    setFormSubmitting(false);
+    setFormError(undefined);
   }, []);
 
   const handleLinkHints = useCallback(() => {
@@ -186,6 +224,47 @@ function AppInner({ connected = true }: { connected: boolean }) {
     setLinkHintsOpen(true);
     setLinkHintsPrefix('');
   }, [currentEntry]);
+
+  const handleBookmark = useCallback(() => {
+    if (!currentEntry) return;
+    const added = bookmarkStoreRef.current.toggle(
+      currentEntry.url,
+      currentEntry.title,
+    );
+    setBookmarks(bookmarkStoreRef.current.list());
+    setExportMessage(
+      added
+        ? `★ bookmarked: ${currentEntry.title}`
+        : `☆ removed bookmark: ${currentEntry.title}`,
+    );
+    if (exportTimerRef.current) clearTimeout(exportTimerRef.current);
+    exportTimerRef.current = setTimeout(() => setExportMessage(null), 2000);
+  }, [currentEntry]);
+
+  const handleHistorySearch = useCallback(() => {
+    setHistorySearchOpen(true);
+    setHistoryQuery('');
+    setHistorySelectedIndex(0);
+  }, []);
+
+  const handleForm = useCallback(() => {
+    const forms = currentEntry?.forms ?? [];
+    if (forms.length === 0) return;
+    const form = forms[0]!;
+    const initial: Record<string, string> = {};
+    for (const f of form.fields) initial[f.name] = f.value;
+    setActiveForm(form);
+    setFormValues(initial);
+    setFormFocusedIndex(0);
+    setFormError(undefined);
+  }, [currentEntry]);
+
+  const editableFormFields = activeForm
+    ? activeForm.fields.filter((f) => f.type !== 'hidden' && f.type !== 'submit')
+    : [];
+
+  const historyItems = collectHistoryItems(browser.tabs, bookmarks);
+  const historyResults = searchHistory(historyItems, historyQuery);
 
   const handleGoUrl = useCallback(() => {
     setUrlEditing(true);
@@ -287,6 +366,97 @@ function AppInner({ connected = true }: { connected: boolean }) {
         handleEscape();
         return;
       }
+      if (key.upArrow) {
+        setHistorySelectedIndex((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setHistorySelectedIndex((i) => Math.min(historyResults.length - 1, i + 1));
+        return;
+      }
+      if (key.return) {
+        const picked = historyResults[historySelectedIndex];
+        setHistorySearchOpen(false);
+        setHistoryQuery('');
+        setHistorySelectedIndex(0);
+        if (picked) void browser.navigate(picked.url);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setHistoryQuery((q) => q.slice(0, -1));
+        setHistorySelectedIndex(0);
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setHistoryQuery((q) => q + input);
+        setHistorySelectedIndex(0);
+      }
+    },
+    { isActive: historySearchOpen },
+  );
+
+  useInput(
+    (input, key) => {
+      if (!activeForm) return;
+      if (key.escape) {
+        handleEscape();
+        return;
+      }
+      if (key.tab || key.downArrow) {
+        setFormFocusedIndex((i) =>
+          editableFormFields.length === 0
+            ? 0
+            : (i + 1) % editableFormFields.length,
+        );
+        return;
+      }
+      if (key.upArrow || (key.shift && key.tab)) {
+        setFormFocusedIndex((i) =>
+          editableFormFields.length === 0
+            ? 0
+            : (i - 1 + editableFormFields.length) % editableFormFields.length,
+        );
+        return;
+      }
+      if (key.return) {
+        setFormSubmitting(true);
+        setFormError(undefined);
+        const form = activeForm;
+        const values = formValues;
+        void (async () => {
+          const result = await browser.submitForm(form, values);
+          if (result.ok) {
+            setActiveForm(null);
+            setFormValues({});
+            setFormFocusedIndex(0);
+            setFormSubmitting(false);
+            setFocusPane('viewer');
+          } else {
+            setFormError(result.error ?? 'submit failed');
+            setFormSubmitting(false);
+          }
+        })();
+        return;
+      }
+      const field = editableFormFields[formFocusedIndex];
+      if (!field) return;
+      if (key.backspace || key.delete) {
+        setFormValues((v) => ({ ...v, [field.name]: (v[field.name] ?? '').slice(0, -1) }));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setFormValues((v) => ({ ...v, [field.name]: (v[field.name] ?? '') + input }));
+      }
+    },
+    { isActive: activeForm !== null && !formSubmitting },
+  );
+
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        handleEscape();
+        return;
+      }
       if (key.backspace || key.delete) {
         setFilterText((prev) => prev.slice(0, -1));
         return;
@@ -319,8 +489,18 @@ function AppInner({ connected = true }: { connected: boolean }) {
       onCloseTab: handleCloseTab,
       onSwitchTab: handleSwitchTab,
       onLinkHints: handleLinkHints,
+      onBookmark: handleBookmark,
+      onHistorySearch: handleHistorySearch,
+      onForm: handleForm,
     },
-    { isActive: !isFiltering && !urlEditing && !linkHintsOpen },
+    {
+      isActive:
+        !isFiltering &&
+        !urlEditing &&
+        !linkHintsOpen &&
+        !historySearchOpen &&
+        !activeForm,
+    },
   );
 
   const back = activeTab ? canBack(activeTab.history) : false;
@@ -376,6 +556,23 @@ function AppInner({ connected = true }: { connected: boolean }) {
           hints={currentEntry.links}
           prefix={linkHintsPrefix}
           height={contentHeight}
+        />
+      )}
+      {historySearchOpen && (
+        <HistorySearchModal
+          query={historyQuery}
+          results={historyResults}
+          selectedIndex={historySelectedIndex}
+          height={contentHeight}
+        />
+      )}
+      {activeForm && (
+        <FormModal
+          form={activeForm}
+          values={formValues}
+          focusedIndex={formFocusedIndex}
+          submitting={formSubmitting}
+          error={formError}
         />
       )}
     </Box>

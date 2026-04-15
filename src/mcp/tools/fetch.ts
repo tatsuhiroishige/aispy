@@ -2,19 +2,25 @@ import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import { z } from 'zod';
 import type { FetchCache } from '../../core/fetchCache.js';
-import { htmlToMarkdown, htmlToTerminal } from '../../core/htmlToText.js';
+import { htmlToMarkdown, htmlToTerminalStream } from '../../core/htmlToText.js';
+import { extractSections, findSection, sectionSummary } from '../../core/sections.js';
 import type { IpcClient } from '../../ipc/client.js';
 
 export const fetchInputSchema = z.object({
   url: z.string().url(),
   prompt: z.string().optional(),
+  section: z.string().optional(),
+  list_sections: z.boolean().optional(),
+  offset: z.number().int().min(0).optional(),
+  limit: z.number().int().min(1).optional(),
 });
 
 export type FetchInput = z.infer<typeof fetchInputSchema>;
 
 export const fetchTool: Tool = {
   name: 'fetch',
-  description: 'Fetch a web page and return its text content',
+  description:
+    'Fetch a web page and return its text content. For large pages, use list_sections to see the TOC, then pass section="Heading" to retrieve just that portion. Or use offset/limit for char-based slicing.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -22,6 +28,22 @@ export const fetchTool: Tool = {
       prompt: {
         type: 'string',
         description: 'What to extract from the page',
+      },
+      section: {
+        type: 'string',
+        description: 'Return only content under this heading (case-insensitive, substring match).',
+      },
+      list_sections: {
+        type: 'boolean',
+        description: 'Return a TOC of headings instead of the body (cheap overview of big pages).',
+      },
+      offset: {
+        type: 'number',
+        description: 'Character offset into the full markdown for slicing.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Max characters to return (paired with offset).',
       },
     },
     required: ['url'],
@@ -69,7 +91,49 @@ function applyAiTruncation(content: string): string {
   return content.slice(0, best) + TRUNCATION_MARKER;
 }
 
-export const _internal = { estimateTokens, applyAiTruncation, AI_MAX_TOKENS };
+function applySectionFilter(
+  markdown: string,
+  args: FetchInput,
+): { body: string; note: string } {
+  if (args.list_sections) {
+    const sections = extractSections(markdown);
+    return {
+      body: `# Sections of ${args.url}\n\n${sectionSummary(sections)}\n\nTotal: ${sections.length} headings, ${markdown.length} chars. Fetch with section="<heading>" or offset+limit to read.`,
+      note: 'list_sections',
+    };
+  }
+  if (args.section) {
+    const sections = extractSections(markdown);
+    const match = findSection(sections, args.section);
+    if (!match) {
+      const avail = sectionSummary(sections).split('\n').slice(0, 20).join('\n');
+      return {
+        body: `No section matching "${args.section}".\n\nAvailable sections:\n${avail}`,
+        note: 'section-not-found',
+      };
+    }
+    return {
+      body: `[Section "${match.heading}" from ${args.url}]\n\n${match.content}`,
+      note: `section:${match.heading}`,
+    };
+  }
+  if (args.offset !== undefined || args.limit !== undefined) {
+    const start = args.offset ?? 0;
+    const end = args.limit !== undefined ? start + args.limit : undefined;
+    const sliced = markdown.slice(start, end);
+    const remaining = markdown.length - (end ?? markdown.length);
+    const header = `[Slice ${start}..${end ?? markdown.length} of ${markdown.length} chars — ${remaining} remaining]\n\n`;
+    return { body: header + sliced, note: `slice:${start}..${end ?? 'end'}` };
+  }
+  return { body: markdown, note: 'full' };
+}
+
+export const _internal = {
+  estimateTokens,
+  applyAiTruncation,
+  applySectionFilter,
+  AI_MAX_TOKENS,
+};
 
 function isSpaLikely(renderedText: string, rawHtml: string): boolean {
   if (renderedText.length < SPA_MIN_CONTENT_LENGTH) return true;
@@ -121,8 +185,8 @@ export async function handleFetch(
       },
     });
 
-    let aiContent = await htmlToMarkdown(response.data, args.url);
-    let { body, prologue } = await htmlToTerminal(response.data, args.url, 100);
+    const fullMarkdown = await htmlToMarkdown(response.data, args.url);
+    const { body: aiContent } = applySectionFilter(fullMarkdown, args);
 
     if (isSpaLikely(aiContent, response.data)) {
       try {
@@ -134,12 +198,55 @@ export async function handleFetch(
             headers: { 'Accept': 'text/markdown' },
           },
         );
-        aiContent = jinaResponse.data;
-        body = jinaResponse.data;
-        prologue = '';
+        const jinaMarkdown = jinaResponse.data;
+        const truncatedAi = applyAiTruncation(jinaMarkdown);
+        const tokens = estimateTokens(truncatedAi);
         process.stderr.write(`[fetch] SPA detected, used Jina Reader for ${args.url}\n`);
+        client?.send({
+          type: 'fetch',
+          timestamp: Date.now(),
+          url: args.url,
+          content: jinaMarkdown,
+          imagePrologue: '',
+          tokens,
+          durationMs: Date.now() - startTime,
+        });
+        cache?.set(args.url, jinaMarkdown, truncatedAi, tokens, '');
+        return { content: [{ type: 'text', text: truncatedAi }] };
       } catch {
-        // Jina failed, keep original content
+        // Jina failed, fall through to terminal rendering
+      }
+    }
+
+    // Stream terminal-rendered body to the TUI while we build the AI response.
+    let firstYield = true;
+    let body = '';
+    let prologue = '';
+    for await (const update of htmlToTerminalStream(response.data, args.url, 100)) {
+      body = update.body;
+      prologue = update.prologue;
+      if (firstYield) {
+        client?.send({
+          type: 'fetch',
+          timestamp: Date.now(),
+          url: args.url,
+          content: body,
+          imagePrologue: prologue,
+          tokens: 0,
+          durationMs: Date.now() - startTime,
+        });
+        firstYield = false;
+      } else {
+        client?.send({
+          type: 'fetch-update',
+          timestamp: Date.now(),
+          url: args.url,
+          content: body,
+          imagePrologue: prologue,
+          decoded: update.decoded,
+          total: update.total,
+          phase: update.phase === 'final' ? 'final' : 'partial',
+        });
       }
     }
 
@@ -151,16 +258,6 @@ export async function handleFetch(
     log += `[fetch]   tokens: ${tokens}\n`;
     log += `[fetch]   preview: ${preview}\n`;
     process.stderr.write(log);
-
-    client?.send({
-      type: 'fetch',
-      timestamp: Date.now(),
-      url: args.url,
-      content: body,
-      imagePrologue: prologue,
-      tokens,
-      durationMs: Date.now() - startTime,
-    });
 
     cache?.set(args.url, body, truncatedAi, tokens, prologue);
 
