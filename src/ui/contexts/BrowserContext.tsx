@@ -79,6 +79,7 @@ export function BrowserProvider({
               ...t,
               loading: false,
               loadError: update.error ?? 'unknown error',
+              decodeProgress: undefined,
             })),
           );
           finalResult = { ok: false, error: update.error };
@@ -91,8 +92,22 @@ export function BrowserProvider({
         } else {
           setTabs((tc) => updateCurrentEntry(tc, tabId, update.entry!));
         }
+        const progress =
+          update.total !== undefined && update.total > 0
+            ? { decoded: update.decoded ?? 0, total: update.total }
+            : undefined;
         if (update.phase === 'final') {
-          setTabs((tc) => updateTab(tc, tabId, (t) => ({ ...t, loading: false })));
+          setTabs((tc) =>
+            updateTab(tc, tabId, (t) => ({
+              ...t,
+              loading: false,
+              decodeProgress: undefined,
+            })),
+          );
+        } else if (progress) {
+          setTabs((tc) =>
+            updateTab(tc, tabId, (t) => ({ ...t, decodeProgress: progress })),
+          );
         }
         finalResult = { ok: true, entry: update.entry };
       }

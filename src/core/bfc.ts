@@ -102,25 +102,56 @@ function layoutAsBlock(
   return state;
 }
 
+const DEFAULT_PLACEHOLDER_CELL_W = 20;
+const DEFAULT_PLACEHOLDER_CELL_H = 10;
+const MAX_IMAGE_CELLS_WIDTH = 40;
+const MAX_IMAGE_CELLS_HEIGHT = 20;
+
+function estimateImageCellSize(
+  box: Box & { kind: 'image' },
+  ctx: LayoutContext,
+  maxCellsWide: number,
+): { cellW: number; cellH: number } {
+  const decoded = getDecodedImage(box);
+  if (decoded) {
+    const cellW = Math.min(maxCellsWide, Math.ceil(decoded.width / ctx.cellPixelWidth));
+    const cellH = Math.max(1, Math.ceil(decoded.height / ctx.cellPixelHeight));
+    return { cellW, cellH };
+  }
+  const clampW = Math.min(maxCellsWide, MAX_IMAGE_CELLS_WIDTH);
+  const clampH = MAX_IMAGE_CELLS_HEIGHT;
+  const hintW = box.hintWidth;
+  const hintH = box.hintHeight;
+  if (hintW && hintH) {
+    const cellW = Math.min(clampW, Math.max(1, Math.ceil(hintW / ctx.cellPixelWidth)));
+    // Preserve aspect ratio if the hint width got clamped by maxCellsWide.
+    const pxW = cellW * ctx.cellPixelWidth;
+    const pxH = (pxW / hintW) * hintH;
+    const cellH = Math.min(clampH, Math.max(1, Math.ceil(pxH / ctx.cellPixelHeight)));
+    return { cellW, cellH };
+  }
+  if (hintW) {
+    const cellW = Math.min(clampW, Math.max(1, Math.ceil(hintW / ctx.cellPixelWidth)));
+    return { cellW, cellH: DEFAULT_PLACEHOLDER_CELL_H };
+  }
+  if (hintH) {
+    const cellH = Math.min(clampH, Math.max(1, Math.ceil(hintH / ctx.cellPixelHeight)));
+    return { cellW: Math.min(clampW, DEFAULT_PLACEHOLDER_CELL_W), cellH };
+  }
+  return {
+    cellW: Math.min(clampW, DEFAULT_PLACEHOLDER_CELL_W),
+    cellH: DEFAULT_PLACEHOLDER_CELL_H,
+  };
+}
+
 function layoutImageBlock(
   ctx: LayoutContext,
   box: Box & { kind: 'image' },
   offset: Offset,
   input: LayoutInput,
 ): BoxLayoutState {
-  const decoded = getDecodedImage(box);
   const maxCellsWide = input.availableWidth;
-
-  let cellW: number;
-  let cellH: number;
-  if (decoded) {
-    cellW = Math.min(maxCellsWide, Math.ceil(decoded.width / ctx.cellPixelWidth));
-    cellH = Math.max(1, Math.ceil(decoded.height / ctx.cellPixelHeight));
-  } else {
-    const text = `[image: ${box.alt || box.src || 'unknown'}]`;
-    cellW = Math.min(maxCellsWide, text.length);
-    cellH = 1;
-  }
+  const { cellW, cellH } = estimateImageCellSize(box, ctx, maxCellsWide);
 
   const state: BoxLayoutState = {
     offset: { ...offset },

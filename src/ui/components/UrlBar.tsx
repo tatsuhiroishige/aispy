@@ -8,6 +8,7 @@ interface UrlBarProps {
   canForward?: boolean;
   editing?: boolean;
   draft?: string;
+  decodeProgress?: { decoded: number; total: number };
 }
 
 export function UrlBar({
@@ -18,6 +19,7 @@ export function UrlBar({
   canForward = false,
   editing = false,
   draft = '',
+  decodeProgress,
 }: UrlBarProps) {
   if (editing) {
     return (
@@ -32,13 +34,18 @@ export function UrlBar({
 
   const backArrow = canBack ? '◀' : '·';
   const forwardArrow = canForward ? '▶' : '·';
-  const status = loading
-    ? '◌ loading'
-    : loadError
-      ? `✗ ${loadError}`
-      : url
-        ? '● '
-        : '';
+  let status: string;
+  if (loading) {
+    status = decodeProgress
+      ? `◌ images ${decodeProgress.decoded}/${decodeProgress.total} `
+      : '◌ loading ';
+  } else if (loadError) {
+    status = `✗ ${loadError} `;
+  } else if (url) {
+    status = '● ';
+  } else {
+    status = '';
+  }
   const displayUrl = url ?? '(no tab — press g to enter URL)';
 
   return (

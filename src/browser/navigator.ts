@@ -16,13 +16,15 @@ export interface NavigationResult {
   error?: string;
 }
 
-export type NavigationPhase = 'text' | 'final';
+export type NavigationPhase = 'text' | 'partial' | 'final';
 
 export interface NavigationUpdate {
   ok: boolean;
   entry?: HistoryEntry;
   error?: string;
   phase: NavigationPhase;
+  decoded?: number;
+  total?: number;
 }
 
 function normalizeUrl(input: string): string {
@@ -113,6 +115,8 @@ export async function* navigateStream(
     yield {
       ok: true,
       phase: update.phase,
+      decoded: update.decoded,
+      total: update.total,
       entry: {
         url,
         title,

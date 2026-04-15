@@ -68,6 +68,26 @@ describe('buildBoxTree', () => {
     expect(img.alt).toBe('pic');
   });
 
+  it('reads width/height attrs as hints on ImageBox', () => {
+    const root = buildFromHtml('<p><img src="x.png" width="200" height="150"></p>');
+    const img = childAt(root, 0, 0) as ImageBox;
+    expect(img.hintWidth).toBe(200);
+    expect(img.hintHeight).toBe(150);
+  });
+
+  it('parses "300px" suffix in width attr', () => {
+    const root = buildFromHtml('<p><img src="x.png" width="300px"></p>');
+    const img = childAt(root, 0, 0) as ImageBox;
+    expect(img.hintWidth).toBe(300);
+  });
+
+  it('leaves hints undefined when no width/height attrs', () => {
+    const root = buildFromHtml('<p><img src="x.png"></p>');
+    const img = childAt(root, 0, 0) as ImageBox;
+    expect(img.hintWidth).toBeUndefined();
+    expect(img.hintHeight).toBeUndefined();
+  });
+
   it('skips <script> and <style>', () => {
     const root = buildFromHtml('<p>keep</p><script>x</script><style>.a{}</style>');
     expect(root.children).toHaveLength(1);

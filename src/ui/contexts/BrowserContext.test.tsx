@@ -163,6 +163,46 @@ describe('BrowserContext', () => {
     expect(api!.activeTab?.loading).toBe(false);
   });
 
+  it('streaming navigation handles partial yields without duplicating history', async () => {
+    async function* batchPass(url: string): AsyncGenerator<NavigationUpdate, void, void> {
+      yield {
+        ok: true,
+        phase: 'text',
+        entry: { url, title: 'T', content: 'text', imagePrologue: '' },
+      };
+      for (let i = 1; i <= 3; i++) {
+        yield {
+          ok: true,
+          phase: i === 3 ? 'final' : 'partial',
+          decoded: i * 4,
+          total: 12,
+          entry: {
+            url,
+            title: 'T',
+            content: `batch-${i}`,
+            imagePrologue: `P${i}`,
+          },
+        };
+      }
+    }
+
+    let api: ReturnType<typeof useBrowser> | null = null;
+    render(
+      <BrowserProvider navigateStreamFn={batchPass}>
+        <Consumer onReady={(a) => (api = a)} />
+      </BrowserProvider>,
+    );
+
+    await act(async () => {
+      await api!.newTab('https://batch.com');
+    });
+
+    expect(api!.activeTab?.history.entries.length).toBe(1);
+    expect(api!.currentEntry?.content).toBe('batch-3');
+    expect(api!.currentEntry?.imagePrologue).toBe('P3');
+    expect(api!.activeTab?.loading).toBe(false);
+  });
+
   it('addFetchedTab adds AI-fetched page as a new tab', async () => {
     let api: ReturnType<typeof useBrowser> | null = null;
     render(

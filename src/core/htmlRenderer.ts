@@ -4,32 +4,27 @@ import { layout, createLayoutContext, createInitialInput } from './layout.js';
 import { paint } from './paint.js';
 import { serializeGrid } from './ansiSerializer.js';
 import { detectTermCapability } from './termCapability.js';
-import { prefetchImages, getUploadEscapes } from './imageStore.js';
+import {
+  prefetchImages,
+  getUploadEscapes,
+  collectFetchableImages,
+  decodeBatch,
+} from './imageStore.js';
 
 export interface TerminalRender {
   body: string;
   prologue: string;
 }
 
-export type RenderPhase = 'text' | 'final';
+export type RenderPhase = 'text' | 'partial' | 'final';
 
 export interface TerminalRenderUpdate extends TerminalRender {
   phase: RenderPhase;
+  decoded: number;
+  total: number;
 }
 
-function paintAndSerialize(
-  doc: Document,
-  width: number,
-): { body: string; prologue: string } {
-  const resolver = createStyleResolver(doc);
-  const root = buildBoxTree(doc, resolver);
-  const capability = detectTermCapability();
-  const ctx = createLayoutContext(1, 1, capability.cellPixelWidth, capability.cellPixelHeight);
-  layout(ctx, root, { x: 0, y: 0 }, createInitialInput(width));
-  const grid = paint(root, capability.imageProtocol);
-  const prologue = getUploadEscapes(capability.imageProtocol);
-  return { body: serializeGrid(grid), prologue };
-}
+const IMAGE_BATCH_SIZE = 4;
 
 export async function renderHtmlToTerminalParts(
   doc: Document,
@@ -52,27 +47,48 @@ export async function renderHtmlToTerminal(doc: Document, width = 80): Promise<s
 }
 
 /**
- * Streams two render passes:
- *   1) text-only: layout + paint with no image data (images become alt-text fallback)
- *   2) final: after image prefetch, re-layout + re-paint with placeholder cells
- * Caller can yield the first pass to UI immediately for fast perceived load.
+ * Progressive rendering: build box tree + layout once (using img width/height
+ * hints so image cells are pre-sized), then yield the text pass, then decode
+ * images in batches of IMAGE_BATCH_SIZE and yield an update per batch. Layout
+ * stays stable across yields because hint-based image cells don't depend on
+ * decoded pixel dimensions.
  */
 export async function* renderHtmlToTerminalStream(
   doc: Document,
   width = 80,
 ): AsyncGenerator<TerminalRenderUpdate, void, void> {
-  // Build a fresh box tree for the text-only pass
-  const textPass = paintAndSerialize(doc, width);
-  yield { ...textPass, phase: 'text' };
-
-  // Prefetch images (mutates the imageStore) then re-render with image data
   const resolver = createStyleResolver(doc);
   const root = buildBoxTree(doc, resolver);
   const capability = detectTermCapability();
-  await prefetchImages(root, capability);
   const ctx = createLayoutContext(1, 1, capability.cellPixelWidth, capability.cellPixelHeight);
   layout(ctx, root, { x: 0, y: 0 }, createInitialInput(width));
-  const grid = paint(root, capability.imageProtocol);
-  const prologue = getUploadEscapes(capability.imageProtocol);
-  yield { body: serializeGrid(grid), prologue, phase: 'final' };
+
+  const images = collectFetchableImages(root);
+  const total = images.length;
+
+  const emit = (phase: RenderPhase, decoded: number): TerminalRenderUpdate => {
+    const grid = paint(root, capability.imageProtocol);
+    return {
+      body: serializeGrid(grid),
+      prologue: getUploadEscapes(capability.imageProtocol),
+      phase,
+      decoded,
+      total,
+    };
+  };
+
+  yield emit('text', 0);
+
+  if (total === 0 || capability.imageProtocol === 'none') {
+    yield emit('final', 0);
+    return;
+  }
+
+  let decoded = 0;
+  for (let i = 0; i < images.length; i += IMAGE_BATCH_SIZE) {
+    const batch = images.slice(i, i + IMAGE_BATCH_SIZE);
+    decoded += await decodeBatch(batch, capability);
+    const isLast = i + IMAGE_BATCH_SIZE >= images.length;
+    yield emit(isLast ? 'final' : 'partial', decoded);
+  }
 }

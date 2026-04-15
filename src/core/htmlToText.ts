@@ -52,7 +52,9 @@ async function renderTerminalParts(
 }
 
 export interface TerminalContentUpdate extends TerminalContent {
-  phase: 'text' | 'final';
+  phase: 'text' | 'partial' | 'final';
+  decoded: number;
+  total: number;
 }
 
 export async function* htmlToTerminalStream(

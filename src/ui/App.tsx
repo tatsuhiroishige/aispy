@@ -336,6 +336,7 @@ function AppInner({ connected = true }: { connected: boolean }) {
         canForward={forward}
         editing={urlEditing}
         draft={urlDraft}
+        decodeProgress={activeTab?.decodeProgress}
       />
       <TabBar tabs={browser.tabs.tabs} activeIndex={browser.tabs.activeIndex} />
       <Box flexGrow={1} flexDirection="column">

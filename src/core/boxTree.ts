@@ -37,6 +37,8 @@ export interface ImageBox extends BaseBox {
   src: string;
   alt: string;
   imageDisplay: 'inline' | 'block';
+  hintWidth?: number;
+  hintHeight?: number;
 }
 
 export type Box =

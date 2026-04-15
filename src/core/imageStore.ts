@@ -52,11 +52,45 @@ export function resetImageStore(): void {
   idCounter = 0;
 }
 
-function collectImages(box: Box, images: ImageBox[]): void {
-  if (box.kind === 'image' && box.src) {
-    images.push(box);
+export function collectFetchableImages(root: Box): ImageBox[] {
+  const out: ImageBox[] = [];
+  function walk(b: Box): void {
+    if (b.kind === 'image' && resolveUrl(b)) out.push(b);
+    for (const c of b.children) walk(c);
   }
-  for (const c of box.children) collectImages(c, images);
+  walk(root);
+  return out;
+}
+
+export async function decodeOne(
+  box: ImageBox,
+  capability: TermCapability,
+): Promise<boolean> {
+  if (capability.imageProtocol === 'none') return false;
+  const src = resolveUrl(box);
+  if (!src) return false;
+  const maxPxW = MAX_IMAGE_CELLS_WIDTH * capability.cellPixelWidth;
+  const maxPxH = MAX_IMAGE_CELLS_HEIGHT * capability.cellPixelHeight;
+  try {
+    const decoded = await decodeImage(src, maxPxW, maxPxH);
+    if (!decoded) return false;
+    boxStore.set(box, decoded);
+    urlStore.set(src, decoded);
+    if (box.src && box.src !== src) urlStore.set(box.src, decoded);
+    ensureImageId(decoded);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function decodeBatch(
+  boxes: ImageBox[],
+  capability: TermCapability,
+): Promise<number> {
+  if (capability.imageProtocol === 'none' || boxes.length === 0) return 0;
+  const results = await Promise.all(boxes.map((b) => decodeOne(b, capability)));
+  return results.filter(Boolean).length;
 }
 
 export async function prefetchImages(
@@ -64,13 +98,8 @@ export async function prefetchImages(
   capability: TermCapability,
 ): Promise<void> {
   if (capability.imageProtocol === 'none') return;
-
-  const images: ImageBox[] = [];
-  collectImages(root, images);
+  const images = collectFetchableImages(root);
   if (images.length === 0) return;
-
-  const maxPxW = MAX_IMAGE_CELLS_WIDTH * capability.cellPixelWidth;
-  const maxPxH = MAX_IMAGE_CELLS_HEIGHT * capability.cellPixelHeight;
 
   const CONCURRENCY = 4;
   const queue = [...images];
@@ -79,19 +108,7 @@ export async function prefetchImages(
     while (queue.length > 0) {
       const box = queue.shift();
       if (!box) break;
-      try {
-        const src = resolveUrl(box);
-        if (!src) continue;
-        const decoded = await decodeImage(src, maxPxW, maxPxH);
-        if (decoded) {
-          boxStore.set(box, decoded);
-          urlStore.set(src, decoded);
-          if (box.src && box.src !== src) urlStore.set(box.src, decoded);
-          ensureImageId(decoded);
-        }
-      } catch {
-        // swallow; undecoded images fall back to alt text
-      }
+      await decodeOne(box, capability);
     }
   }
 

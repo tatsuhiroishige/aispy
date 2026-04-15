@@ -90,6 +90,14 @@ function makeInlineNewlineBox(computed: ComputedStyle, element: Element | null):
   };
 }
 
+function parseDim(attr: string | null): number | undefined {
+  if (!attr) return undefined;
+  const match = /^(\d+(?:\.\d+)?)/.exec(attr.trim());
+  if (!match) return undefined;
+  const value = parseFloat(match[1]!);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 function makeImageBox(
   computed: ComputedStyle,
   element: Element,
@@ -106,6 +114,8 @@ function makeImageBox(
     src,
     alt,
     imageDisplay: imageDisplayOf(computed),
+    hintWidth: parseDim(element.getAttribute('width')),
+    hintHeight: parseDim(element.getAttribute('height')),
   };
 }
 

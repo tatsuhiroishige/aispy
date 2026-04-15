@@ -8,12 +8,18 @@ import {
   current as historyCurrent,
 } from './history.js';
 
+export interface DecodeProgress {
+  decoded: number;
+  total: number;
+}
+
 export interface Tab {
   id: string;
   history: History;
   scrollOffset: number;
   loading: boolean;
   loadError?: string;
+  decodeProgress?: DecodeProgress;
 }
 
 export interface TabCollection {
