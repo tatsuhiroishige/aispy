@@ -14,6 +14,14 @@ export interface ComputedStyle {
   visibility: string;
   flexDirection?: 'row' | 'column';
   flexGrow?: number;
+  float?: 'left' | 'right' | 'none';
+  clear?: 'left' | 'right' | 'both' | 'none';
+  width?: number;
+  borderStyle?: 'none' | 'solid' | 'dashed' | 'dotted' | 'double';
+  borderColor?: string;
+  backgroundColor?: string;
+  gridTemplateColumns?: string;
+  gridGap?: number;
 }
 
 export interface StyleResolver {
@@ -32,28 +40,33 @@ const BASE_DEFAULTS: ComputedStyle = {
   listStyleType: '',
   whiteSpace: 'normal',
   visibility: 'visible',
+  float: 'none',
+  clear: 'none',
+  borderStyle: 'none',
+  borderColor: '',
+  backgroundColor: '',
 };
 
 const TAG_DEFAULTS: Record<string, Partial<ComputedStyle>> = {
-  h1: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 1 },
-  h2: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 1 },
-  h3: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 1 },
-  h4: { display: 'block', fontWeight: 'bold', marginBottom: 1 },
-  h5: { display: 'block', fontWeight: 'bold', marginBottom: 1 },
-  h6: { display: 'block', fontWeight: 'bold', marginBottom: 1 },
-  p: { display: 'block', marginBottom: 1 },
+  h1: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 0 },
+  h2: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 0 },
+  h3: { display: 'block', fontWeight: 'bold', marginTop: 1, marginBottom: 0 },
+  h4: { display: 'block', fontWeight: 'bold' },
+  h5: { display: 'block', fontWeight: 'bold' },
+  h6: { display: 'block', fontWeight: 'bold' },
+  p: { display: 'block' },
   div: { display: 'block' },
   span: { display: 'inline' },
   a: { display: 'inline', textDecoration: 'underline' },
   strong: { fontWeight: 'bold' },
   b: { fontWeight: 'bold' },
   em: { display: 'inline' },
-  pre: { display: 'block', whiteSpace: 'pre', marginBottom: 1 },
+  pre: { display: 'block', whiteSpace: 'pre' },
   code: { display: 'inline' },
-  ul: { display: 'block', listStyleType: 'disc', marginBottom: 1 },
-  ol: { display: 'block', listStyleType: 'decimal', marginBottom: 1 },
+  ul: { display: 'block', listStyleType: 'disc' },
+  ol: { display: 'block', listStyleType: 'decimal' },
   li: { display: 'list-item' },
-  table: { display: 'table', marginBottom: 1 },
+  table: { display: 'table' },
   thead: { display: 'table-row-group' },
   tbody: { display: 'table-row-group' },
   tfoot: { display: 'table-row-group' },
@@ -61,7 +74,7 @@ const TAG_DEFAULTS: Record<string, Partial<ComputedStyle>> = {
   td: { display: 'table-cell', paddingLeft: 1 },
   th: { display: 'table-cell', fontWeight: 'bold', paddingLeft: 1 },
   caption: { display: 'table-caption' },
-  blockquote: { display: 'block', marginBottom: 1, paddingLeft: 2 },
+  blockquote: { display: 'block', paddingLeft: 2 },
   nav: { display: 'block' },
   header: { display: 'block' },
   footer: { display: 'block' },
@@ -69,16 +82,23 @@ const TAG_DEFAULTS: Record<string, Partial<ComputedStyle>> = {
   article: { display: 'block' },
   main: { display: 'block' },
   aside: { display: 'block' },
-  figure: { display: 'block', marginBottom: 1 },
+  figure: { display: 'block' },
   figcaption: { display: 'block' },
-  img: { display: 'block', marginBottom: 1 },
-  hr: { display: 'block', marginBottom: 1 },
-  dl: { display: 'block', marginBottom: 1 },
+  img: { display: 'block' },
+  hr: { display: 'block' },
+  dl: { display: 'block' },
   dt: { display: 'block' },
   dd: { display: 'block', paddingLeft: 2 },
   address: { display: 'block' },
   details: { display: 'block' },
   summary: { display: 'block' },
+  input: { display: 'inline-block', borderStyle: 'solid', paddingLeft: 1 },
+  textarea: { display: 'inline-block', borderStyle: 'solid', paddingLeft: 1 },
+  select: { display: 'inline-block', borderStyle: 'solid', paddingLeft: 1 },
+  button: { display: 'inline-block', borderStyle: 'solid', paddingLeft: 1 },
+  label: { display: 'inline' },
+  fieldset: { display: 'block', borderStyle: 'solid' },
+  legend: { display: 'block', fontWeight: 'bold' },
 };
 
 interface ParsedRule {
@@ -228,6 +248,16 @@ const STYLE_PROP_MAP: Record<string, keyof ComputedStyle> = {
   'visibility': 'visibility',
   'flex-direction': 'flexDirection',
   'flex-grow': 'flexGrow',
+  'float': 'float',
+  'clear': 'clear',
+  'width': 'width',
+  'border-style': 'borderStyle',
+  'border-color': 'borderColor',
+  'background-color': 'backgroundColor',
+  'background': 'backgroundColor',
+  'grid-template-columns': 'gridTemplateColumns',
+  'grid-gap': 'gridGap',
+  'gap': 'gridGap',
 };
 
 function parseNumericValue(value: string): number {
@@ -259,6 +289,22 @@ function applyDeclarations(
       continue;
     }
 
+    // Handle shorthand 'border': "1px solid #333"
+    if (prop === 'border') {
+      const parts = value.split(/\s+/);
+      for (const p of parts) {
+        if (/^(none|solid|dashed|dotted|double)$/i.test(p)) {
+          result.borderStyle = p.toLowerCase() as NonNullable<ComputedStyle['borderStyle']>;
+        } else if (p.startsWith('#') || /^[a-z]+$/i.test(p)) {
+          result.borderColor = p;
+        }
+      }
+      if (!result.borderStyle || result.borderStyle === 'none') {
+        result.borderStyle = 'solid';
+      }
+      continue;
+    }
+
     // Handle shorthand 'padding'
     if (prop === 'padding') {
       const parts = value.split(/\s+/);
@@ -277,6 +323,12 @@ function applyDeclarations(
 
     if (mapped === 'marginTop' || mapped === 'marginBottom' || mapped === 'paddingLeft') {
       (result[mapped] as number) = parseNumericValue(value);
+    } else if (mapped === 'width') {
+      result.width = parseNumericValue(value);
+    } else if (mapped === 'gridTemplateColumns') {
+      result.gridTemplateColumns = value.trim();
+    } else if (mapped === 'gridGap') {
+      result.gridGap = parseNumericValue(value);
     } else if (mapped === 'flexDirection') {
       const dir = value.trim();
       if (dir === 'row' || dir === 'column') {
@@ -286,6 +338,16 @@ function applyDeclarations(
       const num = parseFloat(value);
       if (!isNaN(num)) {
         result.flexGrow = num;
+      }
+    } else if (mapped === 'float') {
+      const v = value.trim().toLowerCase();
+      if (v === 'left' || v === 'right' || v === 'none') {
+        result.float = v;
+      }
+    } else if (mapped === 'clear') {
+      const v = value.trim().toLowerCase();
+      if (v === 'left' || v === 'right' || v === 'both' || v === 'none') {
+        result.clear = v;
       }
     } else {
       (result[mapped] as string) = value;

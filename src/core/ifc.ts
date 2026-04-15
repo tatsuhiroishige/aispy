@@ -1,4 +1,6 @@
 import type { Box, BlockBox } from './boxTree.js';
+import type { ExclusionList } from './floats.js';
+import { isFloated } from './floats.js';
 
 export interface LineAtom {
   x: number;
@@ -134,14 +136,33 @@ export function layoutInline(
   box: BlockBox,
   maxWidth: number,
   cellPixelWidth = 10,
+  exclusions?: ExclusionList,
 ): { lines: LineBox[]; height: number } {
   const atoms: InlineAtom[] = [];
-  for (const c of box.children) flattenInlines(c, atoms, cellPixelWidth);
+  for (const c of box.children) {
+    if (isFloated(c)) continue;
+    flattenInlines(c, atoms, cellPixelWidth);
+  }
 
   const lines: LineBox[] = [];
   let currentAtoms: LineAtom[] = [];
   let currentWidth = 0;
   let y = 0;
+
+  // Per-line available area derived from exclusions at y.
+  let lineOffsetX = 0;
+  let lineMaxWidth = maxWidth;
+
+  const recomputeLineBounds = (): void => {
+    if (!exclusions) {
+      lineOffsetX = 0;
+      lineMaxWidth = maxWidth;
+      return;
+    }
+    const { x, width } = exclusions.availableAt(y, maxWidth);
+    lineOffsetX = x;
+    lineMaxWidth = width;
+  };
 
   const finishLine = (): void => {
     while (
@@ -152,16 +173,24 @@ export function layoutInline(
       if (removed) currentWidth -= removed.width;
     }
     const lineHeight = 1;
+    // Shift every atom by the line's left float offset so paint places them
+    // to the right of left floats.
+    if (lineOffsetX > 0) {
+      for (const atom of currentAtoms) atom.x += lineOffsetX;
+    }
     lines.push({
       offsetY: y,
       height: lineHeight,
-      width: currentWidth,
+      width: currentWidth + lineOffsetX,
       atoms: currentAtoms,
     });
     y += lineHeight;
     currentAtoms = [];
     currentWidth = 0;
+    recomputeLineBounds();
   };
+
+  recomputeLineBounds();
 
   for (const atom of atoms) {
     if (atom.kind === 'newline') {
@@ -170,11 +199,11 @@ export function layoutInline(
     }
     const tokens = tokenize(atom.text);
     for (const token of tokens) {
-      const pieces = splitOversizedToken(token, maxWidth);
+      const pieces = splitOversizedToken(token, lineMaxWidth);
       for (const piece of pieces) {
         const tw = displayWidth(piece);
         if (piece === ' ' && currentWidth === 0) continue;
-        if (currentWidth + tw > maxWidth && currentWidth > 0) {
+        if (currentWidth + tw > lineMaxWidth && currentWidth > 0) {
           finishLine();
           if (piece === ' ') continue;
         }

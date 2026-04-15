@@ -52,9 +52,10 @@ function parseColor(value: string): number {
   return 16 + 36 * r5 + 6 * g5 + b5;
 }
 
-function computeFormatForBox(box: Box | null): Format {
+function computeFormatForBox(box: Box | null, focusUrl?: string | null): Format {
   let flags = 0;
   let fg = -1;
+  let inFocusedLink = false;
   let cursor: Box | null = box;
   while (cursor) {
     if (cursor.computed.fontWeight === 'bold') flags |= FF_BOLD;
@@ -67,15 +68,31 @@ function computeFormatForBox(box: Box | null): Format {
     }
     const tag = cursor.element?.tagName;
     if (tag === 'EM' || tag === 'I') flags |= FF_ITALIC;
+    if (
+      focusUrl &&
+      cursor.kind === 'inline' &&
+      tag === 'A' &&
+      cursor.element?.getAttribute('href') === focusUrl
+    ) {
+      inFocusedLink = true;
+    }
     cursor = cursor.parent;
+  }
+  if (inFocusedLink) {
+    return { fg: 1, bg: -1, flags: flags | FF_BOLD | FF_UNDERLINE };
   }
   return { fg, bg: -1, flags };
 }
 
-function paintBox(box: Box, grid: FlexibleGrid, protocol: ImageProtocol): void {
+function paintBox(
+  box: Box,
+  grid: FlexibleGrid,
+  protocol: ImageProtocol,
+  focusUrl: string | null = null,
+): void {
   const state = getLayoutState(box);
   if (!state) {
-    for (const child of box.children) paintBox(child, grid, protocol);
+    for (const child of box.children) paintBox(child, grid, protocol, focusUrl);
     return;
   }
 
@@ -85,10 +102,21 @@ function paintBox(box: Box, grid: FlexibleGrid, protocol: ImageProtocol): void {
   }
 
   const mt = box.kind === 'block' ? box.computed.marginTop : 0;
+  const mb = box.kind === 'block' ? box.computed.marginBottom : 0;
   const pl = box.kind === 'block' ? box.computed.paddingLeft : 0;
+  const hasBorder =
+    box.kind === 'block' &&
+    !!box.computed.borderStyle &&
+    box.computed.borderStyle !== 'none';
+  const bs = hasBorder ? 1 : 0;
 
-  const contentX = state.offset.x + pl;
-  const contentY = state.offset.y + mt;
+  const contentX = state.offset.x + pl + bs;
+  const contentY = state.offset.y + mt + bs;
+
+  // Paint background first (so later text/borders draw on top).
+  paintBackground(box, state, grid, mt, mb);
+  // Paint border on the content box edges.
+  paintBorder(box, state, grid, mt, mb);
 
   if (state.lines) {
     for (const line of state.lines) {
@@ -109,7 +137,7 @@ function paintBox(box: Box, grid: FlexibleGrid, protocol: ImageProtocol): void {
           );
           continue;
         }
-        const format = computeFormatForBox(atom.sourceBox);
+        const format = computeFormatForBox(atom.sourceBox, focusUrl);
         setText(grid, contentX + atom.x, lineY, atom.text, format, atom.sourceBox);
       }
     }
@@ -118,7 +146,7 @@ function paintBox(box: Box, grid: FlexibleGrid, protocol: ImageProtocol): void {
   }
 
   for (const child of box.children) {
-    paintBox(child, grid, protocol);
+    paintBox(child, grid, protocol, focusUrl);
   }
 }
 
@@ -179,6 +207,86 @@ function paintImage(
         box,
       );
     }
+  }
+}
+
+function paintBackground(
+  box: Box,
+  state: { offset: { x: number; y: number }; size: { width: number; height: number } },
+  grid: FlexibleGrid,
+  mt: number,
+  mb: number,
+): void {
+  if (box.kind !== 'block') return;
+  const bgColor = box.computed.backgroundColor;
+  if (!bgColor) return;
+  const bg = parseColor(bgColor);
+  if (bg === -1) return;
+
+  const startX = state.offset.x;
+  const startY = state.offset.y + mt;
+  const width = state.size.width;
+  const height = Math.max(0, state.size.height - mt - mb);
+  if (width <= 0 || height <= 0) return;
+
+  for (let dy = 0; dy < height; dy++) {
+    setText(
+      grid,
+      startX,
+      startY + dy,
+      ' '.repeat(width),
+      { fg: -1, bg, flags: 0 },
+      null,
+    );
+  }
+}
+
+interface BorderGlyphs {
+  tl: string;
+  tr: string;
+  bl: string;
+  br: string;
+  h: string;
+  v: string;
+}
+
+const BORDER_STYLE_GLYPHS: Record<string, BorderGlyphs> = {
+  solid: { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│' },
+  double: { tl: '╔', tr: '╗', bl: '╚', br: '╝', h: '═', v: '║' },
+  dashed: { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '╌', v: '╎' },
+  dotted: { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '┄', v: '┆' },
+};
+
+function paintBorder(
+  box: Box,
+  state: { offset: { x: number; y: number }; size: { width: number; height: number } },
+  grid: FlexibleGrid,
+  mt: number,
+  mb: number,
+): void {
+  if (box.kind !== 'block') return;
+  const style = box.computed.borderStyle;
+  if (!style || style === 'none') return;
+  const glyphs = BORDER_STYLE_GLYPHS[style];
+  if (!glyphs) return;
+
+  const fg = box.computed.borderColor ? parseColor(box.computed.borderColor) : -1;
+  const format: Format = { fg, bg: -1, flags: 0 };
+
+  const x0 = state.offset.x;
+  const y0 = state.offset.y + mt;
+  const w = state.size.width;
+  const h = Math.max(0, state.size.height - mt - mb);
+  if (w < 2 || h < 2) return;
+  const x1 = x0 + w - 1;
+  const y1 = y0 + h - 1;
+
+  setText(grid, x0, y0, glyphs.tl + glyphs.h.repeat(w - 2) + glyphs.tr, format, null);
+  setText(grid, x0, y1, glyphs.bl + glyphs.h.repeat(w - 2) + glyphs.br, format, null);
+
+  for (let dy = 1; dy < h - 1; dy++) {
+    setText(grid, x0, y0 + dy, glyphs.v, format, null);
+    setText(grid, x1, y0 + dy, glyphs.v, format, null);
   }
 }
 
@@ -249,9 +357,17 @@ function appendSources(grid: FlexibleGrid, root: Box): void {
   });
 }
 
-export function paint(root: Box, protocol: ImageProtocol = 'none'): FlexibleGrid {
+export interface PaintOptions {
+  focusUrl?: string | null;
+}
+
+export function paint(
+  root: Box,
+  protocol: ImageProtocol = 'none',
+  options: PaintOptions = {},
+): FlexibleGrid {
   const grid = createGrid();
-  paintBox(root, grid, protocol);
+  paintBox(root, grid, protocol, options.focusUrl ?? null);
   appendSources(grid, root);
   return grid;
 }

@@ -109,11 +109,11 @@ describe('paint + serializer', () => {
     expect(joined).not.toContain('─');
   });
 
-  it('separates paragraphs with blank line (margin-bottom)', () => {
+  it('places paragraphs on separate lines (Chawan-style tight spacing)', () => {
     const lines = renderHtml('<p>first</p><p>second</p>', 40);
     const firstIdx = lines.findIndex((l) => l.includes('first'));
     const secondIdx = lines.findIndex((l) => l.includes('second'));
-    expect(secondIdx).toBeGreaterThan(firstIdx + 1);
+    expect(secondIdx).toBeGreaterThan(firstIdx);
   });
 
   it('appends Sources section with numbered links', () => {

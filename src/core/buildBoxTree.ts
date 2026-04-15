@@ -160,6 +160,72 @@ function buildFromNode(
     return;
   }
 
+  if (el.tagName === 'INPUT') {
+    const inputEl = el as HTMLInputElement;
+    const typeAttr = (inputEl.getAttribute('type') ?? 'text').toLowerCase();
+    if (typeAttr === 'hidden') return;
+    const value = inputEl.getAttribute('value') ?? '';
+    const placeholder = inputEl.getAttribute('placeholder') ?? '';
+    const widthAttr = inputEl.getAttribute('size');
+    const inferredWidth =
+      widthAttr && !isNaN(Number(widthAttr)) ? Number(widthAttr) : 20;
+    let display: string;
+    if (typeAttr === 'submit' || typeAttr === 'button' || typeAttr === 'reset') {
+      display = value || placeholder || typeAttr.toUpperCase();
+    } else if (typeAttr === 'checkbox') {
+      display = inputEl.hasAttribute('checked') ? '[x]' : '[ ]';
+    } else if (typeAttr === 'radio') {
+      display = inputEl.hasAttribute('checked') ? '(●)' : '( )';
+    } else if (typeAttr === 'password') {
+      display = value ? '•'.repeat(value.length) : placeholder || ' '.repeat(inferredWidth);
+    } else {
+      display = value || placeholder || ' '.repeat(inferredWidth);
+    }
+    const inputBox = makeBlockBox(computed, el);
+    appendChild(parent, inputBox);
+    const textBox = makeInlineTextBox({ ...computed, display: 'inline' }, display);
+    appendChild(inputBox, textBox);
+    return;
+  }
+
+  if (el.tagName === 'TEXTAREA') {
+    const ta = el as HTMLTextAreaElement;
+    const value = ta.value || ta.textContent || '';
+    const rows = ta.getAttribute('rows');
+    const placeholder = ta.getAttribute('placeholder') ?? '';
+    const text = value || placeholder || ' '.repeat(30);
+    const padded = rows && !isNaN(Number(rows))
+      ? text + '\n'.repeat(Math.max(0, Number(rows) - text.split('\n').length))
+      : text;
+    const taBox = makeBlockBox(computed, el);
+    appendChild(parent, taBox);
+    const tb = makeInlineTextBox({ ...computed, display: 'inline' }, padded);
+    appendChild(taBox, tb);
+    return;
+  }
+
+  if (el.tagName === 'BUTTON') {
+    const btnBox = makeBlockBox(computed, el);
+    appendChild(parent, btnBox);
+    const label = (el.textContent ?? '').trim() || 'button';
+    const tb = makeInlineTextBox({ ...computed, display: 'inline' }, ` ${label} `);
+    appendChild(btnBox, tb);
+    return;
+  }
+
+  if (el.tagName === 'SELECT') {
+    const sel = el as HTMLSelectElement;
+    const selected = Array.from(sel.querySelectorAll('option'))
+      .find((o) => o.hasAttribute('selected'));
+    const firstOption = sel.querySelector('option');
+    const label = (selected?.textContent ?? firstOption?.textContent ?? '').trim() || '(select)';
+    const selBox = makeBlockBox(computed, el);
+    appendChild(parent, selBox);
+    const tb = makeInlineTextBox({ ...computed, display: 'inline' }, `${label} ▾`);
+    appendChild(selBox, tb);
+    return;
+  }
+
   const box: Box = isInlineDisplay(computed.display)
     ? makeInlineBox(computed, el)
     : makeBlockBox(computed, el);
