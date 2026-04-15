@@ -135,15 +135,20 @@ export const _internal = {
   AI_MAX_TOKENS,
 };
 
+// Trust our renderer when it produces this much markdown — most "SPA marker"
+// strings (window.__, createElement) appear as inline analytics on perfectly
+// readable static pages, so we treat them as low-confidence signals.
+const TRUST_RENDERED_THRESHOLD = 1500;
+
 function isSpaLikely(renderedText: string, rawHtml: string): boolean {
   if (renderedText.length < SPA_MIN_CONTENT_LENGTH) return true;
-  const head = rawHtml.slice(0, 5000);
+  if (renderedText.length >= TRUST_RENDERED_THRESHOLD) return false;
+  // Marginal case: little but non-empty rendered text. Strong frameworks
+  // are a good signal the page genuinely needs JS.
   return (
     rawHtml.includes('__NEXT_DATA__') ||
-    rawHtml.includes('window.__') ||
-    rawHtml.includes('createElement') ||
-    rawHtml.includes('ReactDOM') ||
-    /\{[\s\S]*\.map\(/.test(head)
+    rawHtml.includes('__NUXT__') ||
+    /<div\s+id="(?:root|app|__next|__nuxt)"[^>]*>\s*<\/div>/i.test(rawHtml)
   );
 }
 
@@ -185,10 +190,10 @@ export async function handleFetch(
       },
     });
 
-    const fullMarkdown = await htmlToMarkdown(response.data, args.url);
-    const { body: aiContent } = applySectionFilter(fullMarkdown, args);
-
-    if (isSpaLikely(aiContent, response.data)) {
+    // AI side: prefer our markdown extraction; fall back to Jina if SPA-like.
+    let aiSource = await htmlToMarkdown(response.data, args.url);
+    let usedJina = false;
+    if (isSpaLikely(aiSource, response.data)) {
       try {
         const jinaResponse = await axios.get<string>(
           `https://r.jina.ai/${args.url}`,
@@ -198,27 +203,17 @@ export async function handleFetch(
             headers: { 'Accept': 'text/markdown' },
           },
         );
-        const jinaMarkdown = jinaResponse.data;
-        const truncatedAi = applyAiTruncation(jinaMarkdown);
-        const tokens = estimateTokens(truncatedAi);
+        aiSource = jinaResponse.data;
+        usedJina = true;
         process.stderr.write(`[fetch] SPA detected, used Jina Reader for ${args.url}\n`);
-        client?.send({
-          type: 'fetch',
-          timestamp: Date.now(),
-          url: args.url,
-          content: jinaMarkdown,
-          imagePrologue: '',
-          tokens,
-          durationMs: Date.now() - startTime,
-        });
-        cache?.set(args.url, jinaMarkdown, truncatedAi, tokens, '');
-        return { content: [{ type: 'text', text: truncatedAi }] };
       } catch {
-        // Jina failed, fall through to terminal rendering
+        // Jina failed, keep our markdown as AI content
       }
     }
+    const { body: aiContent } = applySectionFilter(aiSource, args);
 
-    // Stream terminal-rendered body to the TUI while we build the AI response.
+    // TUI side: always stream terminal-rendered body so images / layout
+    // survive even when the AI side falls back to Jina markdown.
     let firstYield = true;
     let body = '';
     let prologue = '';
@@ -248,6 +243,21 @@ export async function handleFetch(
           phase: update.phase === 'final' ? 'final' : 'partial',
         });
       }
+    }
+
+    // If our renderer produced essentially nothing (true SPA), fall back to
+    // sending the Jina markdown to the TUI so the user has something to read.
+    if (usedJina && body.replace(/\s/g, '').length < SPA_MIN_CONTENT_LENGTH) {
+      client?.send({
+        type: 'fetch-update',
+        timestamp: Date.now(),
+        url: args.url,
+        content: aiSource,
+        imagePrologue: '',
+        phase: 'final',
+      });
+      body = aiSource;
+      prologue = '';
     }
 
     const truncatedAi = applyAiTruncation(aiContent);

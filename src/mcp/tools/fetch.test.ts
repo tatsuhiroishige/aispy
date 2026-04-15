@@ -211,11 +211,12 @@ describe('handleFetch', () => {
       writeSpy.mockRestore();
     });
 
-    it('triggers Jina fallback when content contains SPA patterns', async () => {
+    it('triggers Jina fallback for marginal pages with __NEXT_DATA__ marker', async () => {
+      // Short-but-non-empty rendered text + framework marker → SPA-like
       const spaHtml =
         '<html><body>' +
         '<p>' + 'x'.repeat(300) + '</p>' +
-        '<p>window.__INITIAL_STATE__</p>' +
+        '<script id="__NEXT_DATA__">{}</script>' +
         '</body></html>';
       mockedGet
         .mockResolvedValueOnce({ data: spaHtml })
@@ -227,6 +228,21 @@ describe('handleFetch', () => {
       const text =
         result.content?.[0]?.type === 'text' ? result.content[0].text : '';
       expect(text).toContain('Real Content');
+    });
+
+    it('does NOT trigger Jina for substantial pages even with inline framework markers', async () => {
+      // Lots of real content + a benign window.__ analytics marker → trust the renderer
+      const html =
+        '<html><body>' +
+        '<h1>Sapporo Travel</h1>' +
+        '<p>' + 'real content '.repeat(200) + '</p>' +
+        '<script>window.__analytics = 1;</script>' +
+        '</body></html>';
+      mockedGet.mockResolvedValueOnce({ data: html });
+
+      await handleFetch({ url: 'https://travel.example.com' });
+
+      expect(mockedGet).toHaveBeenCalledTimes(1);
     });
 
     it('keeps original content when Jina Reader fails', async () => {
