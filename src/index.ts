@@ -14,6 +14,9 @@ Usage:
   aispy              Start the TUI (Activity Log + Page Viewer)
   aispy --mcp        Start as MCP server (stdio, for Claude Code)
   aispy --export     Export saved session to JSON + Markdown
+  aispy --test-image <url>
+                     Fetch and render a URL directly to stdout (bypasses TUI).
+                     Use to verify image protocol works in current terminal.
   aispy --help       Show this help
 
 Environment:
@@ -54,6 +57,32 @@ if (process.argv.includes('--export')) {
   process.exit(0);
 }
 
+const testImageIdx = process.argv.indexOf('--test-image');
+if (testImageIdx !== -1) {
+  const url = process.argv[testImageIdx + 1];
+  if (!url) {
+    process.stderr.write('[aispy] --test-image requires a URL argument\n');
+    process.exit(1);
+  }
+  (async () => {
+    const axios = (await import('axios')).default;
+    const { JSDOM } = await import('jsdom');
+    const { renderHtmlToTerminal } = await import('./core/htmlRenderer.js');
+    const response = await axios.get<string>(url, {
+      responseType: 'text',
+      headers: { 'User-Agent': 'aispy/0.1.0' },
+    });
+    const dom = new JSDOM(response.data, { url });
+    const rendered = await renderHtmlToTerminal(dom.window.document, 80);
+    process.stdout.write(rendered);
+    process.stdout.write('\n');
+  })().catch((err) => {
+    process.stderr.write(
+      `[aispy] test-image failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  });
+} else {
 const isMcpMode = process.argv.includes('--mcp');
 
 if (isMcpMode) {
@@ -71,4 +100,5 @@ if (isMcpMode) {
     );
     process.exit(1);
   });
+}
 }

@@ -4,16 +4,44 @@ import axios from 'axios';
 import { createFetchCache } from '../../core/fetchCache.js';
 import type { IpcClient } from '../../ipc/client.js';
 import type { FetchEvent, FetchStartEvent } from '../../types.js';
-import { handleFetch } from './fetch.js';
+import { handleFetch, _internal } from './fetch.js';
 
 const mockedGet = vi.mocked(axios.get);
+
+describe('estimateTokens / applyAiTruncation', () => {
+  it('CJK chars count more tokens than ASCII', () => {
+    const en = _internal.estimateTokens('a'.repeat(100));
+    const cjk = _internal.estimateTokens('日'.repeat(100));
+    expect(cjk).toBeGreaterThan(en * 4);
+  });
+
+  it('does not truncate content under the token cap', () => {
+    const small = 'hello world';
+    expect(_internal.applyAiTruncation(small)).toBe(small);
+  });
+
+  it('truncates CJK content to fit the AI token cap', () => {
+    const big = '日'.repeat(20_000);
+    const result = _internal.applyAiTruncation(big);
+    expect(result.length).toBeLessThan(big.length);
+    expect(result).toContain('truncated');
+    expect(_internal.estimateTokens(result)).toBeLessThanOrEqual(_internal.AI_MAX_TOKENS);
+  });
+
+  it('truncates large ASCII content to fit the AI token cap', () => {
+    const big = 'a'.repeat(200_000);
+    const result = _internal.applyAiTruncation(big);
+    expect(result.length).toBeLessThan(big.length);
+    expect(_internal.estimateTokens(result)).toBeLessThanOrEqual(_internal.AI_MAX_TOKENS);
+  });
+});
 
 describe('handleFetch', () => {
   beforeEach(() => {
     mockedGet.mockReset();
   });
 
-  it('converts HTML to markdown and approximates tokens', async () => {
+  it('renders HTML to text and approximates tokens', async () => {
     mockedGet.mockResolvedValueOnce({ data: '<h1>T</h1><p>body</p>' });
 
     const result = await handleFetch({ url: 'https://example.com/a' });
@@ -22,7 +50,7 @@ describe('handleFetch', () => {
     const first = result.content?.[0];
     expect(first?.type).toBe('text');
     const text = first?.type === 'text' ? first.text : '';
-    expect(text).toContain('# T');
+    expect(text).toContain('T');
     expect(text).toContain('body');
 
     const expectedTokens = Math.ceil(text.length / 4);
@@ -111,9 +139,14 @@ describe('handleFetch', () => {
     expect(secondEvent.content).toBeTruthy();
   });
 
-  it('returns cached content without making an HTTP request', async () => {
+  it('returns cached aiContent (markdown) to AI without making an HTTP request', async () => {
     const cache = createFetchCache();
-    cache.set('https://example.com/cached', 'cached content', 42);
+    cache.set(
+      'https://example.com/cached',
+      'rich-terminal-content',
+      'plain ai content',
+      42,
+    );
 
     const result = await handleFetch(
       { url: 'https://example.com/cached' },
@@ -126,7 +159,7 @@ describe('handleFetch', () => {
     const first = result.content?.[0];
     expect(first?.type).toBe('text');
     const text = first?.type === 'text' ? first.text : '';
-    expect(text).toBe('cached content');
+    expect(text).toBe('plain ai content');
   });
 
   it('fetches normally when cache is empty', async () => {

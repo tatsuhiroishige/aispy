@@ -29,6 +29,7 @@ export interface FetchEvent {
   timestamp: number;
   url: string;
   content: string;
+  imagePrologue?: string;
   tokens: number;
   durationMs: number;
 }

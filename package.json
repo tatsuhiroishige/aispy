@@ -33,6 +33,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
+    "start": "node --experimental-require-module dist/index.js",
+    "test-image": "node --experimental-require-module dist/index.js --test-image",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -48,6 +50,7 @@
     "ink": "6.8.0",
     "jsdom": "27.0.1",
     "react": "19.2.5",
+    "sharp": "0.34.5",
     "turndown": "7.2.4",
     "zod": "4.3.6"
   },

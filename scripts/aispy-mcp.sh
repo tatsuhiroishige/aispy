@@ -4,4 +4,5 @@
 cd "$(dirname "$0")/.."
 export $(grep -v '^#' .env 2>/dev/null | xargs)
 # --experimental-require-module needed for jsdom's @csstools transitive dep
-exec node --experimental-require-module dist/index.js --mcp
+# Redirect stderr to a log file for debugging (ASPYPY_DEBUG_IMAGES etc.)
+exec node --experimental-require-module dist/index.js --mcp 2>> /tmp/aispy-mcp.log

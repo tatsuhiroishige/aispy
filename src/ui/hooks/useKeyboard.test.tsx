@@ -96,4 +96,54 @@ describe('useKeyboard', () => {
     stdin.write('\x05');
     expect(handlers.onExport).toHaveBeenCalledTimes(1);
   });
+
+  it('dispatches g to onGoUrl', () => {
+    const handlers: KeyHandlers = { onGoUrl: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('g');
+    expect(handlers.onGoUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches h to onBack and l to onForward', () => {
+    const handlers: KeyHandlers = { onBack: vi.fn(), onForward: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('h');
+    stdin.write('l');
+    expect(handlers.onBack).toHaveBeenCalledTimes(1);
+    expect(handlers.onForward).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches r to onReload', () => {
+    const handlers: KeyHandlers = { onReload: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('r');
+    expect(handlers.onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches t to onNewTab and w to onCloseTab', () => {
+    const handlers: KeyHandlers = { onNewTab: vi.fn(), onCloseTab: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('t');
+    stdin.write('w');
+    expect(handlers.onNewTab).toHaveBeenCalledTimes(1);
+    expect(handlers.onCloseTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches digits 1-9 to onSwitchTab (zero-indexed)', () => {
+    const handlers: KeyHandlers = { onSwitchTab: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('1');
+    stdin.write('5');
+    stdin.write('9');
+    expect(handlers.onSwitchTab).toHaveBeenNthCalledWith(1, 0);
+    expect(handlers.onSwitchTab).toHaveBeenNthCalledWith(2, 4);
+    expect(handlers.onSwitchTab).toHaveBeenNthCalledWith(3, 8);
+  });
+
+  it('dispatches f to onLinkHints', () => {
+    const handlers: KeyHandlers = { onLinkHints: vi.fn() };
+    const { stdin } = render(<TestKeyComponent handlers={handlers} />);
+    stdin.write('f');
+    expect(handlers.onLinkHints).toHaveBeenCalledTimes(1);
+  });
 });

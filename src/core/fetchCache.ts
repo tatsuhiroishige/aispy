@@ -1,12 +1,20 @@
 export interface CachedPage {
   content: string;
+  aiContent: string;
+  imagePrologue?: string;
   tokens: number;
   cachedAt: number;
 }
 
 export interface FetchCache {
   get(url: string): CachedPage | undefined;
-  set(url: string, content: string, tokens: number): void;
+  set(
+    url: string,
+    content: string,
+    aiContent: string,
+    tokens: number,
+    imagePrologue?: string,
+  ): void;
   has(url: string): boolean;
   size(): number;
   clear(): void;
@@ -29,12 +37,18 @@ export function createFetchCache(
       return entry;
     },
 
-    set(url: string, content: string, tokens: number): void {
+    set(
+      url: string,
+      content: string,
+      aiContent: string,
+      tokens: number,
+      imagePrologue?: string,
+    ): void {
       if (entries.size >= maxEntries && !entries.has(url)) {
         const oldest = entries.keys().next().value as string;
         entries.delete(oldest);
       }
-      entries.set(url, { content, tokens, cachedAt: Date.now() });
+      entries.set(url, { content, aiContent, imagePrologue, tokens, cachedAt: Date.now() });
     },
 
     has(url: string): boolean {
