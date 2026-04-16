@@ -33,8 +33,41 @@ function isInlineDisplay(display: string): boolean {
   return display === 'inline' || display === '';
 }
 
+// Wikipedia / MediaWiki auto-generate a <div id="toc" class="toc"> that
+// duplicates the heading structure. Chrome renders it as a left sidebar via
+// Vector skin CSS; in our flow it just produces redundant long lists at the
+// top of the article. Skip it — aispy prepends its own TOC when the page
+// overflows the AI token cap.
+const SKIPPED_CLASS_NAMES = new Set([
+  'toc',           // MediaWiki TOC
+  'toctitle',      // MediaWiki TOC heading wrapper
+  'noprint',       // MediaWiki print-only items often clutter reading
+  'mw-editsection',// "[edit]" links next to section headings
+  'mw-jump-link',
+  'printfooter',
+]);
+
+const SKIPPED_IDS = new Set([
+  'toc',
+  'jump-to-nav',
+  'mw-navigation',
+  'p-search',
+  'siteSub',
+  'contentSub',
+  'footer',
+  'catlinks',
+]);
+
 function isSkippedElement(el: Element): boolean {
-  return SKIP_TAGS.has(el.tagName);
+  if (SKIP_TAGS.has(el.tagName)) return true;
+  if (el.id && SKIPPED_IDS.has(el.id)) return true;
+  const className = el.className;
+  if (typeof className === 'string' && className.length > 0) {
+    for (const cls of className.split(/\s+/)) {
+      if (SKIPPED_CLASS_NAMES.has(cls)) return true;
+    }
+  }
+  return false;
 }
 
 function isHidden(style: ComputedStyle): boolean {

@@ -101,6 +101,37 @@ const TAG_DEFAULTS: Record<string, Partial<ComputedStyle>> = {
   legend: { display: 'block', fontWeight: 'bold' },
 };
 
+// Class-name heuristics for sites that rely on external stylesheets (which
+// aispy does not fetch). Broadly matches MediaWiki / Wikipedia / MDN / common
+// "infobox / hatnote / note / warning / sidebar" conventions. Applied *after*
+// tag defaults and *before* parsed <style> rules so in-page CSS can override.
+const CLASS_DEFAULTS: Record<string, Partial<ComputedStyle>> = {
+  // MediaWiki / Wikipedia
+  infobox: { float: 'right', width: 32, borderStyle: 'solid', paddingLeft: 1 },
+  'infobox-table': { float: 'right', width: 32, borderStyle: 'solid', paddingLeft: 1 },
+  hatnote: { backgroundColor: '#fffbe6', paddingLeft: 1 },
+  ambox: { backgroundColor: '#fffbe6', borderStyle: 'solid', paddingLeft: 1 },
+  wikitable: { borderStyle: 'solid' },
+  navbox: { borderStyle: 'solid' },
+  // General "aside"-like patterns
+  sidebar: { float: 'right', width: 32, borderStyle: 'solid', paddingLeft: 1 },
+  // Note/warning conventions (MDN, many docs sites)
+  warning: { backgroundColor: '#fff4b8', borderStyle: 'solid', paddingLeft: 1 },
+  note: { backgroundColor: '#e6f3ff', borderStyle: 'solid', paddingLeft: 1 },
+  notecard: { borderStyle: 'solid', paddingLeft: 1 },
+};
+
+function applyClassDefaults(style: ComputedStyle, element: Element): ComputedStyle {
+  const className = element.className;
+  if (typeof className !== 'string' || className.length === 0) return style;
+  let result = style;
+  for (const cls of className.split(/\s+/)) {
+    const defaults = CLASS_DEFAULTS[cls];
+    if (defaults) result = { ...result, ...defaults };
+  }
+  return result;
+}
+
 interface ParsedRule {
   specificity: number;
   match: (el: Element) => boolean;
@@ -382,6 +413,9 @@ export function createStyleResolver(doc: Document): StyleResolver {
       let style: ComputedStyle = tagDefaults
         ? { ...BASE_DEFAULTS, ...tagDefaults }
         : { ...BASE_DEFAULTS };
+
+      // 1b. Apply class-name heuristics for sites that rely on external CSS
+      style = applyClassDefaults(style, element);
 
       // 2. Apply stylesheet rules in specificity order
       for (const rule of allRules) {
