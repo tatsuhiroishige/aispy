@@ -33,13 +33,25 @@ const fetchEventSchema = z.object({
   timestamp: z.number(),
   url: z.string(),
   content: z.string(),
+  imagePrologue: z.string().optional(),
   tokens: z.number(),
   durationMs: z.number(),
 });
 
+const fetchUpdateEventSchema = z.object({
+  type: z.literal('fetch-update'),
+  timestamp: z.number(),
+  url: z.string(),
+  content: z.string(),
+  imagePrologue: z.string().optional(),
+  decoded: z.number().optional(),
+  total: z.number().optional(),
+  phase: z.union([z.literal('partial'), z.literal('final')]),
+});
+
 export const aispyEventSchema: z.ZodType<AispyEvent> = z.discriminatedUnion(
   'type',
-  [searchEventSchema, fetchStartEventSchema, fetchEventSchema],
+  [searchEventSchema, fetchStartEventSchema, fetchEventSchema, fetchUpdateEventSchema],
 );
 
 export function serializeEvent(event: AispyEvent): string {
