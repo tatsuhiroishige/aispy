@@ -245,20 +245,10 @@ export async function handleFetch(
       }
     }
 
-    // If our renderer produced essentially nothing (true SPA), fall back to
-    // sending the Jina markdown to the TUI so the user has something to read.
-    if (usedJina && body.replace(/\s/g, '').length < SPA_MIN_CONTENT_LENGTH) {
-      client?.send({
-        type: 'fetch-update',
-        timestamp: Date.now(),
-        url: args.url,
-        content: aiSource,
-        imagePrologue: '',
-        phase: 'final',
-      });
-      body = aiSource;
-      prologue = '';
-    }
+    // TUI always gets terminal-rendered output, never raw markdown.
+    // If the renderer produced essentially nothing (true SPA), the user can
+    // press `o` to open in an external browser — established safety valve.
+    void usedJina;
 
     const truncatedAi = applyAiTruncation(aiContent);
     const tokens = estimateTokens(truncatedAi);
