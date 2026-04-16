@@ -8,6 +8,50 @@ import { handleFetch, _internal } from './fetch.js';
 
 const mockedGet = vi.mocked(axios.get);
 
+describe('prependTocIfTruncated', () => {
+  it('returns content unchanged when under token cap', () => {
+    const md = '# A\nshort';
+    const out = _internal.prependTocIfTruncated(md, { url: 'x' });
+    expect(out).toBe(md);
+  });
+
+  it('prepends TOC when content overflows token cap', () => {
+    const big = '# Intro\n' + '日'.repeat(20_000) + '\n# Summary\nend';
+    const out = _internal.prependTocIfTruncated(big, { url: 'https://ex.com' });
+    expect(out).toContain('Table of contents');
+    expect(out).toContain('# Intro');
+    expect(out).toContain('# Summary');
+    expect(out).toContain('Re-fetch with section=');
+  });
+
+  it('skips TOC when filter is active (list_sections)', () => {
+    const big = '# A\n' + '日'.repeat(20_000);
+    const out = _internal.prependTocIfTruncated(big, {
+      url: 'x',
+      list_sections: true,
+    });
+    expect(out).toBe(big);
+  });
+
+  it('skips TOC when section is specified', () => {
+    const big = '# A\n' + '日'.repeat(20_000);
+    const out = _internal.prependTocIfTruncated(big, { url: 'x', section: 'A' });
+    expect(out).toBe(big);
+  });
+
+  it('skips TOC when offset is specified', () => {
+    const big = '# A\n' + '日'.repeat(20_000);
+    const out = _internal.prependTocIfTruncated(big, { url: 'x', offset: 100 });
+    expect(out).toBe(big);
+  });
+
+  it('skips TOC when markdown has no headings (nothing to list)', () => {
+    const big = '日'.repeat(20_000);
+    const out = _internal.prependTocIfTruncated(big, { url: 'x' });
+    expect(out).toBe(big);
+  });
+});
+
 describe('estimateTokens / applyAiTruncation', () => {
   it('CJK chars count more tokens than ASCII', () => {
     const en = _internal.estimateTokens('a'.repeat(100));

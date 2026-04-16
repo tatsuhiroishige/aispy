@@ -20,7 +20,7 @@ export type FetchInput = z.infer<typeof fetchInputSchema>;
 export const fetchTool: Tool = {
   name: 'fetch',
   description:
-    'Fetch a web page and return its text content. For large pages, use list_sections to see the TOC, then pass section="Heading" to retrieve just that portion. Or use offset/limit for char-based slicing.',
+    'Fetch a web page as markdown. Call without filters first — for large pages a table of contents is prepended automatically so you can re-fetch a specific section without a separate list_sections call. Use section="Heading" to scope to one part of a large page, or offset/limit for char-based slicing. Use list_sections only if you want the TOC alone.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -91,6 +91,31 @@ function applyAiTruncation(content: string): string {
   return content.slice(0, best) + TRUNCATION_MARKER;
 }
 
+/**
+ * When a full fetch would overflow the AI token budget, prepend a compact TOC
+ * of the page so the AI can see all available sections in one call and
+ * re-fetch only what it needs, avoiding a separate list_sections round-trip.
+ * Applied only when args has no existing filter (section/offset/list_sections).
+ */
+function prependTocIfTruncated(markdown: string, args: FetchInput): string {
+  if (args.section || args.list_sections || args.offset !== undefined || args.limit !== undefined) {
+    return markdown;
+  }
+  if (estimateTokens(markdown) <= AI_MAX_TOKENS) return markdown;
+
+  const sections = extractSections(markdown);
+  if (sections.length === 0) return markdown;
+
+  const toc = sectionSummary(sections);
+  const header =
+    `[This page is too large to return in full. ` +
+    `Re-fetch with section="<heading>" to read a specific part ` +
+    `(${sections.length} headings available).]\n\n` +
+    `──── Table of contents ────\n${toc}\n\n` +
+    `──── Content (truncated below) ────\n\n`;
+  return header + markdown;
+}
+
 function applySectionFilter(
   markdown: string,
   args: FetchInput,
@@ -132,6 +157,7 @@ export const _internal = {
   estimateTokens,
   applyAiTruncation,
   applySectionFilter,
+  prependTocIfTruncated,
   AI_MAX_TOKENS,
 };
 
@@ -163,7 +189,8 @@ export async function handleFetch(
       // Apply section/offset/limit/list_sections fresh on every hit; cache
       // stores the full markdown so parameter changes take effect.
       const { body: freshAi } = applySectionFilter(cached.fullMarkdown, args);
-      const truncatedAi = applyAiTruncation(freshAi);
+      const withToc = prependTocIfTruncated(freshAi, args);
+      const truncatedAi = applyAiTruncation(withToc);
       const tokens = estimateTokens(truncatedAi);
       client?.send({
         type: 'fetch',
@@ -215,7 +242,8 @@ export async function handleFetch(
         // Jina failed, keep our markdown as AI content
       }
     }
-    const { body: aiContent } = applySectionFilter(aiSource, args);
+    const { body: aiFiltered } = applySectionFilter(aiSource, args);
+    const aiContent = prependTocIfTruncated(aiFiltered, args);
 
     // TUI side: always stream terminal-rendered body so images / layout
     // survive even when the AI side falls back to Jina markdown.
