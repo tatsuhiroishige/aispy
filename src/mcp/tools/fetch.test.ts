@@ -130,13 +130,12 @@ describe('handleFetch', () => {
     expect(fetchEv.content).toBeTruthy();
   });
 
-  it('returns cached aiContent (markdown) to AI without making an HTTP request', async () => {
+  it('returns cached full markdown to AI without making an HTTP request', async () => {
     const cache = createFetchCache();
     cache.set(
       'https://example.com/cached',
       'rich-terminal-content',
-      'plain ai content',
-      42,
+      'cached full markdown body',
     );
 
     const result = await handleFetch(
@@ -150,7 +149,62 @@ describe('handleFetch', () => {
     const first = result.content?.[0];
     expect(first?.type).toBe('text');
     const text = first?.type === 'text' ? first.text : '';
-    expect(text).toBe('plain ai content');
+    expect(text).toBe('cached full markdown body');
+  });
+
+  it('applies section filter fresh on cache hit (params are not cached)', async () => {
+    const cache = createFetchCache();
+    const fullMd = '# Intro\nabout\n## Details\ndeep dive content\n## Summary\nfinal';
+    cache.set('https://example.com/sec', 'rich', fullMd);
+
+    const result = await handleFetch(
+      { url: 'https://example.com/sec', section: 'Details' },
+      undefined,
+      cache,
+    );
+
+    expect(mockedGet).not.toHaveBeenCalled();
+    const text =
+      result.content?.[0]?.type === 'text' ? result.content[0].text : '';
+    expect(text).toContain('Section "Details"');
+    expect(text).toContain('deep dive content');
+    expect(text).not.toContain('final');
+  });
+
+  it('list_sections on cache hit returns the TOC', async () => {
+    const cache = createFetchCache();
+    cache.set(
+      'https://example.com/toc',
+      'rich',
+      '# A\n## A1\n## A2\n# B',
+    );
+
+    const result = await handleFetch(
+      { url: 'https://example.com/toc', list_sections: true },
+      undefined,
+      cache,
+    );
+
+    const text =
+      result.content?.[0]?.type === 'text' ? result.content[0].text : '';
+    expect(text).toContain('Sections of');
+    expect(text).toContain('# A');
+    expect(text).toContain('# B');
+  });
+
+  it('offset/limit on cache hit slices the markdown', async () => {
+    const cache = createFetchCache();
+    cache.set('https://example.com/slice', 'rich', 'abcdefghij'.repeat(100));
+
+    const result = await handleFetch(
+      { url: 'https://example.com/slice', offset: 100, limit: 50 },
+      undefined,
+      cache,
+    );
+
+    const text =
+      result.content?.[0]?.type === 'text' ? result.content[0].text : '';
+    expect(text).toContain('Slice 100..150');
   });
 
   it('fetches normally when cache is empty', async () => {

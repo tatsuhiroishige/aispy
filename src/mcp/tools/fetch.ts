@@ -160,17 +160,22 @@ export async function handleFetch(
   try {
     const cached = cache?.get(args.url);
     if (cached) {
+      // Apply section/offset/limit/list_sections fresh on every hit; cache
+      // stores the full markdown so parameter changes take effect.
+      const { body: freshAi } = applySectionFilter(cached.fullMarkdown, args);
+      const truncatedAi = applyAiTruncation(freshAi);
+      const tokens = estimateTokens(truncatedAi);
       client?.send({
         type: 'fetch',
         timestamp: Date.now(),
         url: args.url,
         content: cached.content,
         imagePrologue: cached.imagePrologue,
-        tokens: cached.tokens,
+        tokens,
         durationMs: 0,
       });
       process.stderr.write(`[fetch] cache hit: ${args.url}\n`);
-      return { content: [{ type: 'text', text: cached.aiContent }] };
+      return { content: [{ type: 'text', text: truncatedAi }] };
     }
 
     const startTime = Date.now();
@@ -259,7 +264,7 @@ export async function handleFetch(
     log += `[fetch]   preview: ${preview}\n`;
     process.stderr.write(log);
 
-    cache?.set(args.url, body, truncatedAi, tokens, prologue);
+    cache?.set(args.url, body, aiSource, prologue);
 
     return {
       content: [

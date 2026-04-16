@@ -10,15 +10,15 @@ describe('createFetchCache', () => {
     vi.useRealTimers();
   });
 
-  it('set then get returns cached content', () => {
+  it('set then get returns cached content and full markdown', () => {
     const cache = createFetchCache();
-    cache.set('https://example.com', 'hello', 'ai-hello', 10);
+    cache.set('https://example.com', 'terminal-body', 'full-markdown', 'PROLOGUE');
 
     const entry = cache.get('https://example.com');
     expect(entry).toBeDefined();
-    expect(entry?.content).toBe('hello');
-    expect(entry?.aiContent).toBe('ai-hello');
-    expect(entry?.tokens).toBe(10);
+    expect(entry?.content).toBe('terminal-body');
+    expect(entry?.fullMarkdown).toBe('full-markdown');
+    expect(entry?.imagePrologue).toBe('PROLOGUE');
   });
 
   it('get returns undefined for unknown URL', () => {
@@ -29,7 +29,7 @@ describe('createFetchCache', () => {
   it('expired entries return undefined', () => {
     const ttlMs = 5000;
     const cache = createFetchCache(200, ttlMs);
-    cache.set('https://example.com', 'content', 'content', 5);
+    cache.set('https://example.com', 'content', 'md');
 
     expect(cache.get('https://example.com')).toBeDefined();
 
@@ -40,9 +40,9 @@ describe('createFetchCache', () => {
 
   it('evicts oldest entry when at maxEntries', () => {
     const cache = createFetchCache(2);
-    cache.set('https://a.com', 'a', 'a', 1);
-    cache.set('https://b.com', 'b', 'b', 2);
-    cache.set('https://c.com', 'c', 'c', 3);
+    cache.set('https://a.com', 'a', 'md-a');
+    cache.set('https://b.com', 'b', 'md-b');
+    cache.set('https://c.com', 'c', 'md-c');
 
     expect(cache.get('https://a.com')).toBeUndefined();
     expect(cache.get('https://b.com')).toBeDefined();
@@ -52,7 +52,7 @@ describe('createFetchCache', () => {
 
   it('has returns true for cached and false for missing', () => {
     const cache = createFetchCache();
-    cache.set('https://example.com', 'x', 'x', 1);
+    cache.set('https://example.com', 'x', 'md');
 
     expect(cache.has('https://example.com')).toBe(true);
     expect(cache.has('https://missing.com')).toBe(false);
@@ -60,8 +60,8 @@ describe('createFetchCache', () => {
 
   it('clear removes all entries', () => {
     const cache = createFetchCache();
-    cache.set('https://a.com', 'a', 'a', 1);
-    cache.set('https://b.com', 'b', 'b', 2);
+    cache.set('https://a.com', 'a', 'md-a');
+    cache.set('https://b.com', 'b', 'md-b');
 
     expect(cache.size()).toBe(2);
     cache.clear();
